@@ -1,0 +1,136 @@
+const Offer = require('../models/Offer');
+const Deal = require('../models/Deal');
+const Notification = require('../models/Notification');
+
+// @desc    Get all offers (for a farmer or trader)
+// @route   GET /api/offers
+// @access  Private
+exports.getOffers = async (req, res) => {
+  try {
+    let query;
+    if (req.user.role === 'farmer') {
+      query = { farmerId: req.user.id };
+    } else if (req.user.role === 'trader') {
+      query = { traderId: req.user.id };
+    } else {
+      query = {}; // admin
+    }
+
+    const offers = await Offer.find(query)
+      .populate('cropId', 'cropName price images')
+      .populate('traderId', 'name avatar')
+      .populate('farmerId', 'name avatar phone email')
+      .sort('-createdAt');
+
+    res.status(200).json({ success: true, count: offers.length, data: offers });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+};
+
+// @desc    Create new offer
+// @route   POST /api/offers
+// @access  Private (Trader)
+exports.createOffer = async (req, res) => {
+  try {
+    req.body.traderId = req.user.id;
+    const offer = await Offer.create(req.body);
+
+    // Notify farmer
+    await Notification.create({
+      userId: req.body.farmerId,
+      title: 'New Offer Received',
+      message: `You have received a new offer of $${req.body.offeredPrice} for your crop.`,
+      type: 'offer',
+      link: '/farmer-dashboard'
+    });
+
+    res.status(201).json({ success: true, data: offer });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+};
+
+// @desc    Update offer status (Accept/Reject/Counter/Cancel)
+// @route   PUT /api/offers/:id
+// @access  Private
+exports.updateOfferStatus = async (req, res) => {
+  try {
+    let offer = await Offer.findById(req.params.id);
+
+    if (!offer) {
+      return res.status(404).json({ success: false, error: 'Offer not found' });
+    }
+
+    const isFarmer = offer.farmerId.toString() === req.user.id;
+    const isTrader = offer.traderId.toString() === req.user.id;
+
+    if (!isFarmer && !isTrader && req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, error: 'Not authorized to update this offer' });
+    }
+
+    const { status, message, newPrice } = req.body;
+
+    // Handle Counter Offer
+    if (status === 'Countered') {
+      offer.status = 'Countered';
+      offer.offeredPrice = newPrice || offer.offeredPrice;
+      offer.negotiationHistory.push({
+        senderId: req.user.id,
+        message: message || 'Counter offer sent',
+        price: offer.offeredPrice
+      });
+    } else {
+      offer.status = status;
+      if (message) {
+        offer.negotiationHistory.push({
+          senderId: req.user.id,
+          message,
+          price: offer.offeredPrice
+        });
+      }
+    }
+
+    await offer.save();
+
+    // Notifications
+    const notifyUser = isFarmer ? offer.traderId : offer.farmerId;
+    await Notification.create({
+      userId: notifyUser,
+      title: `Offer ${status}`,
+      message: `Your offer has been ${status.toLowerCase()} by the ${isFarmer ? 'farmer' : 'trader'}.`,
+      type: 'offer',
+      link: isFarmer ? '/trader-dashboard' : '/farmer-dashboard'
+    });
+
+    // If accepted, create a Deal
+    if (status === 'Accepted') {
+      await Deal.create({
+        cropId: offer.cropId,
+        farmerId: offer.farmerId,
+        traderId: offer.traderId,
+        finalPrice: offer.offeredPrice,
+        quantity: offer.quantity
+      });
+      
+      // Notify both parties about deal creation
+      await Notification.create([{
+        userId: offer.farmerId,
+        title: 'New Deal Created',
+        message: `Your offer was accepted and a new deal has been created.`,
+        type: 'deal',
+        link: '/farmer-dashboard'
+      }, {
+        userId: offer.traderId,
+        title: 'New Deal Created',
+        message: `Your offer was accepted and a new deal has been created.`,
+        type: 'deal',
+        link: '/trader-dashboard'
+      }]);
+    }
+
+    res.status(200).json({ success: true, data: offer });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+};

@@ -1,0 +1,72 @@
+import { createContext, useState, useEffect } from 'react';
+import api from '../api/axios';
+
+export const AuthContext = createContext();
+
+export const AuthProvider = ({ children }) => {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      const token = localStorage.getItem('token');
+      if (token) {
+        try {
+          const res = await api.get('/auth/me');
+          setUser(res.data.data);
+        } catch (err) {
+          console.error('Failed to fetch user', err);
+          localStorage.removeItem('token');
+        }
+      }
+      setLoading(false);
+    };
+
+    fetchUser();
+  }, []);
+
+  const login = async (email, password) => {
+    const res = await api.post('/auth/login', { email, password });
+    if (res.data.token) {
+      localStorage.setItem('token', res.data.token);
+      setUser(res.data.user);
+    }
+    return res.data;
+  };
+
+  const register = async (userData) => {
+    const res = await api.post('/auth/register', userData);
+    // Returns { message: 'OTP sent...' }
+    return res.data;
+  };
+
+  const verifyOTP = async (email, otp) => {
+    const res = await api.post('/auth/verify', { email, otp });
+    localStorage.setItem('token', res.data.token);
+    setUser(res.data.user);
+    return res.data;
+  };
+
+  const googleLogin = async (token, role) => {
+    const res = await api.post('/auth/google', { token, role });
+    localStorage.setItem('token', res.data.token);
+    setUser(res.data.user);
+    return res.data;
+  };
+
+  const forgotPassword = async (email) => {
+    const res = await api.post('/auth/forgotpassword', { email });
+    return res.data;
+  };
+
+  const logout = () => {
+    localStorage.removeItem('token');
+    setUser(null);
+  };
+
+  return (
+    <AuthContext.Provider value={{ user, login, register, verifyOTP, googleLogin, forgotPassword, logout, loading }}>
+      {children}
+    </AuthContext.Provider>
+  );
+};
