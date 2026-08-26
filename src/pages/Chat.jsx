@@ -32,7 +32,8 @@ const Chat = () => {
     if (!user) return;
     
     // Connect socket
-    socketRef.current = io('http://localhost:5000');
+    const socketBaseUrl = import.meta.env.VITE_SOCKET_URL || (import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace(/\/api\/?$/, '') : 'http://localhost:5000');
+    socketRef.current = io(socketBaseUrl);
     
     socketRef.current.on('message', (message) => {
       setMessages((prev) => {
