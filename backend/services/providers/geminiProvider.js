@@ -9,7 +9,11 @@ class GeminiProvider extends BaseProvider {
   constructor(apiKey = process.env.GEMINI_API_KEY) {
     super('gemini');
     this.apiKey = apiKey;
-    this.modelName = process.env.GEMINI_VISION_MODEL || 'gemini-2.5-flash';
+    this.candidateModels = [
+      process.env.GEMINI_VISION_MODEL || 'gemini-2.5-flash',
+      'gemini-3.6-flash',
+      'gemini-3.5-flash-lite'
+    ].filter(Boolean);
 
     if (this.apiKey && this.apiKey !== 'dummy_gemini_key') {
       this.ai = new GoogleGenAI({ apiKey: this.apiKey });
@@ -93,35 +97,51 @@ CRITICAL INSTRUCTIONS:
       }
     };
 
-    const response = await this.ai.models.generateContent({
-      model: this.modelName,
-      contents: [
-        systemPrompt,
-        imagePart
-      ]
-    });
+    let lastError = null;
 
-    if (!response || !response.text) {
-      throw new Error('Empty response received from Gemini Vision AI');
-    }
+    // Try candidate models in order if one experiences 503 high demand
+    for (const modelName of this.candidateModels) {
+      try {
+        console.log(`[GeminiProvider] Attempting vision analysis with model: ${modelName}`);
 
-    // Clean potential markdown wrapping
-    let cleanText = response.text.replace(/```json/gi, '').replace(/```/g, '').trim();
-    
-    let parsed;
-    try {
-      parsed = JSON.parse(cleanText);
-    } catch (parseErr) {
-      // Attempt regex extraction of JSON object if extraneous tokens exist
-      const jsonMatch = cleanText.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        parsed = JSON.parse(jsonMatch[0]);
-      } else {
-        throw new Error('Failed to parse structured JSON from Gemini Vision AI response');
+        const response = await this.ai.models.generateContent({
+          model: modelName,
+          contents: [
+            systemPrompt,
+            imagePart
+          ]
+        });
+
+        if (!response || !response.text) {
+          throw new Error(`Empty response received from Gemini Vision AI (${modelName})`);
+        }
+
+        // Clean potential markdown wrapping
+        let cleanText = response.text.replace(/```json/gi, '').replace(/```/g, '').trim();
+        
+        let parsed;
+        try {
+          parsed = JSON.parse(cleanText);
+        } catch (parseErr) {
+          const jsonMatch = cleanText.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            parsed = JSON.parse(jsonMatch[0]);
+          } else {
+            throw new Error(`Failed to parse structured JSON from Gemini Vision AI response (${modelName})`);
+          }
+        }
+
+        console.log(`[GeminiProvider] Vision analysis successfully completed with model: ${modelName}`);
+        return parsed;
+      } catch (err) {
+        console.warn(`[GeminiProvider] Model ${modelName} failed: ${err.message}. Trying next candidate model if available...`);
+        lastError = err;
+        // Short backoff before next model
+        await new Promise(r => setTimeout(r, 600));
       }
     }
 
-    return parsed;
+    throw lastError || new Error('All Gemini Vision models failed to analyze the image');
   }
 }
 
