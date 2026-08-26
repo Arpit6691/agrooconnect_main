@@ -10,7 +10,7 @@ class GeminiProvider extends BaseProvider {
     super('gemini');
     this.apiKey = apiKey;
     this.candidateModels = [
-      process.env.GEMINI_VISION_MODEL || 'gemini-2.5-flash',
+      process.env.GEMINI_VISION_MODEL || 'gemini-3.6-flash',
       'gemini-3.6-flash',
       'gemini-3.5-flash-lite'
     ].filter(Boolean);
