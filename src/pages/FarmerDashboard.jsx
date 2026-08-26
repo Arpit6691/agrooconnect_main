@@ -5,6 +5,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { Wallet, Package, TrendingUp, Bell, Plus, Loader, MapPin, Eye, Check, X, ThermometerSun, Droplets, CloudRain, Cpu, Star, Zap, ShoppingBag, BarChart3, AlertCircle, Edit, Trash2, ArrowRight, MessageSquare } from 'lucide-react';
 import api from '../api/axios';
 import { AuthContext } from '../context/AuthContext';
+import { getCropImageUrl, handleImageError } from '../utils/imageUrl';
 
 // --- Mock Data ---
 const MOCK_MARKET_PRICES = [
@@ -622,7 +623,12 @@ const FarmerDashboard = () => {
           ) : myCrops.map(crop => (
             <div key={crop._id} className="bg-white border border-slate-100 rounded-3xl overflow-hidden hover:shadow-xl transition-all hover:-translate-y-1 group">
               <div className="h-48 bg-slate-100 overflow-hidden relative">
-                <img src={crop.images && crop.images.length > 0 ? crop.images[0] : 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?auto=format&fit=crop&w=500&q=80'} alt={crop.cropName} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                <img 
+                  src={getCropImageUrl(crop)} 
+                  alt={crop.cropName} 
+                  onError={handleImageError}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+                />
                 <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-bold text-slate-900 shadow-sm flex items-center gap-1">
                   <MapPin className="w-3 h-3 text-[#16A34A]"/> {crop.location || 'Local'}
                 </div>

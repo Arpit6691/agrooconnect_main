@@ -96,10 +96,8 @@ exports.createCrop = async (req, res) => {
 
     // Check if an image was uploaded
     if (req.file) {
-      // The path where the frontend can access the image
-      // Note: Make sure the frontend adds the backend URL if running on a different port,
-      // or the frontend's proxy handles /uploads. Here we save the relative path.
-      req.body.images = [`http://localhost:5000/uploads/${req.file.filename}`];
+      const baseUrl = `${req.protocol}://${req.get('host')}`;
+      req.body.images = [`${baseUrl}/uploads/${req.file.filename}`];
     }
 
     const crop = await Crop.create(req.body);

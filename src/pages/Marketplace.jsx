@@ -4,6 +4,7 @@ import { Search, Filter, MapPin, Star, ChevronDown, Loader, X, Trash2, User } fr
 import api from '../api/axios';
 import { AuthContext } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
+import { getCropImageUrl, handleImageError } from '../utils/imageUrl';
 
 const Marketplace = () => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -279,7 +280,12 @@ const Marketplace = () => {
               >
                 <div className="relative h-48 overflow-hidden">
                   <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors z-10"></div>
-                  <img src={crop.images && crop.images.length > 0 ? crop.images[0] : 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?auto=format&fit=crop&w=500&q=80'} alt={crop.cropName} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                  <img 
+                    src={getCropImageUrl(crop)} 
+                    alt={crop.cropName} 
+                    onError={handleImageError}
+                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" 
+                  />
                   <div className="absolute top-4 right-4 z-20 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full text-sm font-bold text-slate-900 flex items-center gap-1">
                     <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" /> {crop.farmerId?.rating || 'New'}
                   </div>
