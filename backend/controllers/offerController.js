@@ -17,8 +17,8 @@ exports.getOffers = async (req, res) => {
     }
 
     const offers = await Offer.find(query)
-      .populate('cropId', 'cropName price images')
-      .populate('traderId', 'name avatar')
+      .populate('cropId', 'cropName price images unit quantity')
+      .populate('traderId', 'name avatar phone email')
       .populate('farmerId', 'name avatar phone email')
       .sort('-createdAt');
 
@@ -40,7 +40,7 @@ exports.createOffer = async (req, res) => {
     await Notification.create({
       userId: req.body.farmerId,
       title: 'New Offer Received',
-      message: `You have received a new offer of $${req.body.offeredPrice} for your crop.`,
+      message: `You have received a new offer of ₹${req.body.offeredPrice} for your crop.`,
       type: 'offer',
       link: '/farmer-dashboard'
     });

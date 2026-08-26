@@ -38,15 +38,24 @@ exports.startConversation = async (req, res) => {
   try {
     const { receiverId } = req.body;
     
+    if (!receiverId) {
+      return res.status(400).json({ success: false, error: 'Receiver ID is required' });
+    }
+
     // Check if exists
     let conversation = await Conversation.findOne({
       participants: { $all: [req.user.id, receiverId] }
-    });
+    })
+      .populate('participants', 'name role email phone avatar')
+      .populate('lastMessage');
 
     if (!conversation) {
-      conversation = await Conversation.create({
+      const newConv = await Conversation.create({
         participants: [req.user.id, receiverId]
       });
+      conversation = await Conversation.findById(newConv._id)
+        .populate('participants', 'name role email phone avatar')
+        .populate('lastMessage');
     }
 
     res.status(200).json({ success: true, data: conversation });
@@ -54,3 +63,4 @@ exports.startConversation = async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 };
+

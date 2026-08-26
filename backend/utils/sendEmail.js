@@ -1,18 +1,29 @@
 const nodemailer = require('nodemailer');
 
 const sendEmail = async (options) => {
-  // Mock transporter for development if no real SMTP details are provided
+  const smtpHost = process.env.SMTP_HOST;
+  const smtpEmail = process.env.SMTP_EMAIL;
+  const smtpPassword = process.env.SMTP_PASSWORD;
+
+  // If no real SMTP credentials are configured, skip email sending.
+  // The OTP is already printed to the backend terminal for development use.
+  if (!smtpHost || !smtpEmail || !smtpPassword ||
+      smtpEmail === 'test_user' || smtpPassword === 'test_password') {
+    console.log(`\n[DEV] Email skipped - no SMTP configured. OTP already shown in console above.\n`);
+    return;
+  }
+
   const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST || 'smtp.mailtrap.io',
-    port: process.env.SMTP_PORT || 2525,
+    host: smtpHost,
+    port: process.env.SMTP_PORT || 587,
     auth: {
-      user: process.env.SMTP_EMAIL || 'test_user',
-      pass: process.env.SMTP_PASSWORD || 'test_password'
+      user: smtpEmail,
+      pass: smtpPassword
     }
   });
 
   const message = {
-    from: `${process.env.FROM_NAME || 'AgroConnect'} <${process.env.FROM_EMAIL || 'noreply@agroconnect.com'}>`,
+    from: `${process.env.FROM_NAME || 'AgroConnect'} <${process.env.FROM_EMAIL || smtpEmail}>`,
     to: options.email,
     subject: options.subject,
     text: options.message
@@ -20,10 +31,10 @@ const sendEmail = async (options) => {
 
   try {
     const info = await transporter.sendMail(message);
-    console.log('Message sent: %s', info.messageId);
+    console.log('Email sent: %s', info.messageId);
   } catch (error) {
-    console.error('Error sending email:', error);
-    // Do not throw error here to allow the app to continue functioning in dev mode
+    console.error('Email sending failed (non-fatal):', error.message);
+    // Non-fatal: OTP is still shown in console
   }
 };
 

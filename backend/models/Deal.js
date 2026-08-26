@@ -31,11 +31,14 @@ const DealSchema = new mongoose.Schema({
   },
 
   payment: {
-    status: { type: String, enum: ['Pending', 'Verification Pending', 'Paid', 'Failed', 'Refunded'], default: 'Pending' },
-    method: { type: String, enum: ['Cash', 'Bank Transfer', 'UPI', 'Not Set'], default: 'Not Set' },
+    status: { type: String, enum: ['Pending', 'Verification Pending', 'Processing', 'Paid', 'Failed', 'Refunded'], default: 'Pending' },
+    method: { type: String, enum: ['Cash', 'Bank Transfer', 'UPI', 'Online', 'Not Set'], default: 'Not Set' },
     transactionId: { type: String },
     proofUrl: { type: String },
-    verifiedAt: { type: Date }
+    verifiedAt: { type: Date },
+    razorpayOrderId: { type: String },
+    razorpayPaymentId: { type: String },
+    razorpaySignature: { type: String }
   },
 
   farmerConfirmation: { type: Boolean, default: false },
@@ -56,7 +59,7 @@ const DealSchema = new mongoose.Schema({
 });
 
 // Middleware to automatically push to statusHistory and auditLog on creation
-DealSchema.pre('save', function(next) {
+DealSchema.pre('save', function() {
   if (this.isNew) {
     this.statusHistory.push({
       status: 'Accepted',
@@ -70,7 +73,6 @@ DealSchema.pre('save', function(next) {
     });
   }
   this.updatedAt = new Date();
-  next();
 });
 
 module.exports = mongoose.model('Deal', DealSchema);

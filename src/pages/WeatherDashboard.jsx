@@ -4,14 +4,16 @@ import { Cloud, Sun, CloudRain, Wind, Droplets, MapPin, Search } from 'lucide-re
 import api from '../api/axios';
 
 const WeatherDashboard = () => {
-  const [location, setLocation] = useState('Kansas, USA');
+  const [searchInput, setSearchInput] = useState('Delhi, IN');
+  const [activeLocation, setActiveLocation] = useState('Delhi, IN');
   const [weatherData, setWeatherData] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchWeather = async () => {
+      setLoading(true);
       try {
-        const { data } = await api.get(`/weather?location=${location}`);
+        const { data } = await api.get(`/weather?location=${encodeURIComponent(activeLocation)}`);
         setWeatherData(data.data);
       } catch (err) {
         console.error(err);
@@ -20,9 +22,16 @@ const WeatherDashboard = () => {
       }
     };
     fetchWeather();
-  }, [location]);
+  }, [activeLocation]);
 
-  if (loading) {
+  const handleSearch = (e) => {
+    e.preventDefault();
+    if (searchInput.trim().length >= 2) {
+      setActiveLocation(searchInput.trim());
+    }
+  };
+
+  if (loading && !weatherData) {
     return <div className="text-center py-20 text-slate-500">Loading Weather Data...</div>;
   }
 
@@ -36,16 +45,22 @@ const WeatherDashboard = () => {
           <p className="text-slate-500 mt-1">Real-time weather insights for better farming decisions.</p>
         </div>
         
-        <div className="relative w-full md:w-80">
+        <form onSubmit={handleSearch} className="relative w-full md:w-80">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
           <input 
             type="text" 
-            placeholder="Search farm location..." 
-            className="w-full pl-12 pr-4 py-3 rounded-full border border-slate-200 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
-            value={location}
-            onChange={(e) => setLocation(e.target.value)}
+            placeholder="Search city (e.g. Delhi, Mumbai)..." 
+            className="w-full pl-12 pr-24 py-3 rounded-full border border-slate-200 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
           />
-        </div>
+          <button
+            type="submit"
+            className="absolute right-2 top-1/2 -translate-y-1/2 px-4 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs font-bold rounded-full transition-colors"
+          >
+            Search
+          </button>
+        </form>
       </div>
 
       <div className="grid lg:grid-cols-3 gap-8">

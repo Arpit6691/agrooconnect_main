@@ -26,6 +26,10 @@ const DealDetails = () => {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [showDisputeModal, setShowDisputeModal] = useState(false);
+  const [showMockPaymentModal, setShowMockPaymentModal] = useState(false);
+  const [mockPaymentStep, setMockPaymentStep] = useState('options'); // options, processing, success
+  const [mockTransactionId, setMockTransactionId] = useState('');
+  const [mockPaymentMethod, setMockPaymentMethod] = useState('UPI');
 
   // Forms
   const [transportForm, setTransportForm] = useState({ arrangedBy: 'Trader', driverName: '', vehicleNumber: '', trackingId: '', pickupDate: '' });
@@ -60,7 +64,81 @@ const DealDetails = () => {
       setShowCancelModal(false);
       setShowDisputeModal(false);
     } catch (err) {
+      console.error(err);
       alert(err.response?.data?.error || 'Action failed');
+    }
+  };
+
+  const handleRazorpayPayment = async () => {
+    try {
+      // 1. Create order
+      const { data: orderData } = await api.post(`/deals/${id}/create-razorpay-order`);
+      const { order } = orderData;
+      
+      const options = {
+        key: 'rzp_test_123',
+        amount: order.amount,
+        currency: 'INR',
+        name: 'Agroo Connect',
+        description: `Payment for ${deal.cropId.cropName}`,
+        order_id: order.id,
+        handler: async function (response) {
+          try {
+            await api.post(`/deals/${id}/verify-razorpay-payment`, {
+              razorpayOrderId: response.razorpay_order_id,
+              razorpayPaymentId: response.razorpay_payment_id,
+              razorpaySignature: response.razorpay_signature
+            });
+            alert('Online Payment Successful!');
+            fetchDeal();
+          } catch (err) {
+            alert('Payment verification failed');
+          }
+        },
+        prefill: {
+          name: user.name,
+          email: user.email,
+          contact: user.phone || ''
+        },
+        theme: {
+          color: '#16A34A'
+        }
+      };
+
+      const rzp = new window.Razorpay(options);
+      rzp.on('payment.failed', function (response){
+        alert('Payment Failed: ' + response.error.description);
+      });
+      rzp.open();
+    } catch (err) {
+      alert('Failed to initialize Razorpay');
+      console.error(err);
+    }
+  };
+
+  const handleMockPaymentSubmit = async () => {
+    try {
+      setMockPaymentStep('processing');
+      const { data: createData } = await api.post(`/deals/${id}/create-mock-payment`);
+      
+      setTimeout(async () => {
+        try {
+          await api.post(`/deals/${id}/complete-mock-payment`, {
+            success: true,
+            transactionId: createData.transactionId,
+            method: mockPaymentMethod
+          });
+          setMockTransactionId(createData.transactionId);
+          setMockPaymentStep('success');
+          fetchDeal();
+        } catch (err) {
+          alert('Payment Failed');
+          setMockPaymentStep('options');
+        }
+      }, 2000);
+    } catch (err) {
+      alert('Failed to initialize Mock Payment');
+      setMockPaymentStep('options');
     }
   };
 
@@ -264,9 +342,14 @@ const DealDetails = () => {
                     )}
 
                     {isTrader && currentStatus === 'Payment Pending' && deal.payment?.status !== 'Verification Pending' && (
-                      <button onClick={() => setShowPaymentModal(true)} className="px-6 py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-colors shadow-sm flex items-center gap-2 whitespace-nowrap">
-                        <DollarSign className="w-5 h-5" /> Mark Paid
-                      </button>
+                      <>
+                        <button onClick={() => { setShowMockPaymentModal(true); setMockPaymentStep('options'); }} className="px-6 py-3 bg-[#0d2366] text-white rounded-xl font-bold hover:bg-blue-900 transition-colors shadow-sm flex items-center gap-2 whitespace-nowrap">
+                          <DollarSign className="w-5 h-5" /> Pay Online
+                        </button>
+                        <button onClick={() => setShowPaymentModal(true)} className="px-6 py-3 bg-white text-emerald-600 border border-emerald-200 rounded-xl font-bold hover:bg-emerald-50 transition-colors shadow-sm flex items-center gap-2 whitespace-nowrap">
+                          Submit Proof
+                        </button>
+                      </>
                     )}
 
                     {/* Farmer Actions */}
@@ -470,6 +553,19 @@ const DealDetails = () => {
                   <span className="text-slate-500 font-medium">Location</span>
                   <span className="font-bold text-slate-900 flex items-center gap-1"><MapPin className="w-3.5 h-3.5 text-slate-400"/> {otherParty?.location || 'India'}</span>
                 </div>
+
+                <button 
+                  onClick={() => navigate('/chat', {
+                    state: {
+                      receiverId: otherParty?._id,
+                      receiverName: otherParty?.name,
+                      initialMessage: `Hi ${otherParty?.name || ''}, regarding our deal #${deal._id?.substring(deal._id.length - 6)} for ${deal.cropId?.cropName}...`
+                    }
+                  })}
+                  className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-2xl font-bold text-sm transition-all shadow-md shadow-blue-500/20 flex items-center justify-center gap-2 hover:-translate-y-0.5"
+                >
+                  <MessageSquare className="w-4 h-4" /> Chat with {isFarmer ? 'Trader' : 'Farmer'}
+                </button>
               </div>
             </div>
 
@@ -578,6 +674,102 @@ const DealDetails = () => {
                   <button onClick={() => setShowDisputeModal(false)} className="flex-1 p-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200">Cancel</button>
                   <button onClick={() => handleAction('dispute', { reason: reasonForm }, 'Dispute Opened. Support will contact you.')} className="flex-1 p-3 bg-amber-500 text-white rounded-xl font-bold hover:bg-amber-600">Submit Dispute</button>
                 </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+        {/* Mock Payment Modal */}
+        {showMockPaymentModal && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 p-4 backdrop-blur-sm">
+            <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }} className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+              {/* Header */}
+              <div className="bg-slate-900 p-6 text-white text-center relative shrink-0">
+                {!['processing', 'success'].includes(mockPaymentStep) && (
+                  <button onClick={() => setShowMockPaymentModal(false)} className="absolute top-4 right-4 text-slate-400 hover:text-white">
+                    <XCircle className="w-6 h-6" />
+                  </button>
+                )}
+                <div className="flex justify-center mb-2">
+                  <div className="bg-emerald-500/20 p-2 rounded-full">
+                    <ShieldCheck className="w-8 h-8 text-emerald-400" />
+                  </div>
+                </div>
+                <h3 className="text-xl font-bold mb-1">AgroConnect Demo Pay</h3>
+                <p className="text-sm text-slate-400">Secure Payment Simulation</p>
+              </div>
+
+              {/* Body */}
+              <div className="p-6 overflow-y-auto custom-scrollbar">
+                {mockPaymentStep === 'options' && (
+                  <div className="space-y-6">
+                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex justify-between items-center">
+                      <div>
+                        <p className="text-sm text-slate-500 font-bold">To: {otherParty?.name || 'Farmer'}</p>
+                        <p className="text-xs text-slate-400">Deal #{deal?._id?.substring(deal._id.length - 6).toUpperCase()}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-2xl font-bold text-slate-900">₹{deal.finalPrice * deal.quantity}</p>
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="text-sm font-bold text-slate-700 mb-3">Select Payment Method</p>
+                      <div className="grid grid-cols-2 gap-3">
+                        <button onClick={() => setMockPaymentMethod('UPI')} className={`p-4 rounded-2xl border-2 flex flex-col items-center gap-2 transition-all ${mockPaymentMethod === 'UPI' ? 'border-[#16A34A] bg-[#16A34A]/5' : 'border-slate-200 hover:border-slate-300'}`}>
+                          <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold">UPI</div>
+                          <span className="text-sm font-bold text-slate-700">UPI ID</span>
+                        </button>
+                        <button onClick={() => setMockPaymentMethod('Card')} className={`p-4 rounded-2xl border-2 flex flex-col items-center gap-2 transition-all ${mockPaymentMethod === 'Card' ? 'border-[#16A34A] bg-[#16A34A]/5' : 'border-slate-200 hover:border-slate-300'}`}>
+                          <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 font-bold"><Activity className="w-5 h-5"/></div>
+                          <span className="text-sm font-bold text-slate-700">Card</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="bg-blue-50 text-blue-700 p-4 rounded-xl text-xs font-medium flex items-start gap-2">
+                      <Info className="w-4 h-4 shrink-0 mt-0.5" />
+                      <p>This is a mock payment gateway for demonstration purposes. No real money will be deducted.</p>
+                    </div>
+
+                    <button onClick={handleMockPaymentSubmit} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold text-lg hover:bg-slate-800 transition-colors shadow-lg shadow-slate-900/20">
+                      Pay ₹{deal.finalPrice * deal.quantity}
+                    </button>
+                  </div>
+                )}
+
+                {mockPaymentStep === 'processing' && (
+                  <div className="py-12 flex flex-col items-center justify-center text-center space-y-4">
+                    <div className="relative">
+                      <div className="w-16 h-16 border-4 border-slate-100 border-t-[#16A34A] rounded-full animate-spin"></div>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <DollarSign className="w-6 h-6 text-[#16A34A]" />
+                      </div>
+                    </div>
+                    <div>
+                      <h4 className="text-xl font-bold text-slate-900">Processing Payment...</h4>
+                      <p className="text-slate-500 mt-1">Please do not close this window or press back.</p>
+                    </div>
+                  </div>
+                )}
+
+                {mockPaymentStep === 'success' && (
+                  <div className="py-8 flex flex-col items-center justify-center text-center space-y-6">
+                    <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mb-2">
+                      <CheckCircle className="w-10 h-10 text-emerald-600" />
+                    </div>
+                    <div>
+                      <h4 className="text-2xl font-bold text-slate-900 text-emerald-600">Payment Successful!</h4>
+                      <p className="text-slate-500 mt-2 font-medium">₹{deal.finalPrice * deal.quantity} paid via {mockPaymentMethod}</p>
+                    </div>
+                    <div className="bg-slate-50 w-full p-4 rounded-xl border border-slate-100 text-left">
+                      <p className="text-xs text-slate-400 font-bold uppercase mb-1">Transaction ID</p>
+                      <p className="text-sm font-mono text-slate-700 bg-white p-2 border border-slate-200 rounded">{mockTransactionId}</p>
+                    </div>
+                    <button onClick={() => setShowMockPaymentModal(false)} className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-bold hover:bg-emerald-700 transition-colors">
+                      Continue to Deal
+                    </button>
+                  </div>
+                )}
               </div>
             </motion.div>
           </motion.div>

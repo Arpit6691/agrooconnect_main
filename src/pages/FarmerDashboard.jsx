@@ -2,7 +2,7 @@ import { useState, useEffect, useContext, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
-import { Wallet, Package, TrendingUp, Bell, Plus, Loader, MapPin, Eye, Check, X, ThermometerSun, Droplets, CloudRain, Cpu, Star, Zap, ShoppingBag, BarChart3, AlertCircle, Edit, Trash2, ArrowRight } from 'lucide-react';
+import { Wallet, Package, TrendingUp, Bell, Plus, Loader, MapPin, Eye, Check, X, ThermometerSun, Droplets, CloudRain, Cpu, Star, Zap, ShoppingBag, BarChart3, AlertCircle, Edit, Trash2, ArrowRight, MessageSquare } from 'lucide-react';
 import api from '../api/axios';
 import { AuthContext } from '../context/AuthContext';
 
@@ -76,14 +76,14 @@ const FarmerDashboard = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [dealsRes, cropsRes, offersRes] = await Promise.all([
+        const [dealsRes, cropsRes, offersRes] = await Promise.allSettled([
           api.get('/deals'),
           api.get('/crops'),
           api.get('/offers')
         ]);
-        setDeals(dealsRes.data.data || []);
-        setCrops(cropsRes.data.data || []);
-        setOffers(offersRes.data.data || []);
+        if (dealsRes.status === 'fulfilled') setDeals(dealsRes.value.data.data || []);
+        if (cropsRes.status === 'fulfilled') setCrops(cropsRes.value.data.data || []);
+        if (offersRes.status === 'fulfilled') setOffers(offersRes.value.data.data || []);
       } catch (err) {
         console.error(err);
       } finally {
@@ -109,6 +109,23 @@ const FarmerDashboard = () => {
       console.error('Error updating offer', err);
       alert('Failed to update offer');
     }
+  };
+
+  const handleChatWithTrader = (trader, crop, offerOrDeal) => {
+    const traderId = trader?._id || trader;
+    const traderName = trader?.name || 'Trader';
+    const cropName = crop?.cropName || 'Crop';
+    const initialMsg = offerOrDeal?.offeredPrice 
+      ? `Hi ${traderName}, I saw your offer of ₹${offerOrDeal.offeredPrice} for ${cropName} (${offerOrDeal.quantity} ${crop?.unit || 'kg'}). Let's discuss!`
+      : `Hi ${traderName}, regarding our deal for ${cropName}.`;
+
+    navigate('/chat', {
+      state: {
+        receiverId: traderId,
+        receiverName: traderName,
+        initialMessage: initialMsg
+      }
+    });
   };
 
   const handleDeleteCrop = async (cropId) => {
@@ -425,6 +442,35 @@ const FarmerDashboard = () => {
         ))}
       </div>
 
+      {/* 🌿 Plant Disease Detection CTA */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3 }}
+        onClick={() => navigate('/plant-disease-detection')}
+        className="mb-8 bg-gradient-to-r from-[#16A34A] to-[#22C55E] rounded-3xl p-6 md:p-8 shadow-lg shadow-[#16A34A]/20 cursor-pointer hover:shadow-xl hover:-translate-y-0.5 transition-all relative overflow-hidden group"
+      >
+        <div className="absolute top-0 right-0 w-48 h-48 bg-white/10 rounded-full blur-3xl pointer-events-none group-hover:scale-125 transition-transform duration-700" />
+        <div className="absolute bottom-0 left-0 w-32 h-32 bg-white/5 rounded-full blur-2xl pointer-events-none" />
+        <div className="relative z-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-white/20 backdrop-blur-sm rounded-2xl border border-white/20">
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M11 20A7 7 0 0 1 9.8 6.9C15.5 4.9 17 3.5 17 3.5s1.5 3 1.5 6.5a7 7 0 0 1-7.5 10Z" />
+                <path d="M11.5 18a4.5 4.5 0 0 1-2-8.5C13 7 14.5 6 14.5 6s.5 2.5.5 5a4.5 4.5 0 0 1-3.5 7Z" />
+              </svg>
+            </div>
+            <div>
+              <h3 className="text-xl font-bold text-white mb-1">🌿 Plant Disease Detection</h3>
+              <p className="text-white/80 text-sm">Upload a leaf photo to instantly detect diseases, get treatment advice, and keep your crops healthy.</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 bg-white/20 backdrop-blur-sm text-white px-5 py-3 rounded-xl font-bold text-sm border border-white/20 whitespace-nowrap hover:bg-white/30 transition-colors">
+            Scan Now <ArrowRight className="w-4 h-4" />
+          </div>
+        </div>
+      </motion.div>
+
       <div className="grid lg:grid-cols-2 gap-8 mb-8">
         {/* Pending Offers Redesign */}
         <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm flex flex-col h-[500px]">
@@ -464,24 +510,32 @@ const FarmerDashboard = () => {
                     <span className="font-bold text-slate-900">{offer.quantity} {offer.cropId?.unit || 'kg'}</span>
                   </div>
                 </div>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="space-y-2">
+                  <div className="grid grid-cols-3 gap-2">
+                    <button 
+                      onClick={() => handleOfferAction(offer._id, 'Accepted')}
+                      className="col-span-1 py-2.5 bg-[#16A34A] hover:bg-[#22C55E] text-white rounded-xl font-bold text-sm transition-colors shadow-sm shadow-[#16A34A]/20 flex items-center justify-center gap-1"
+                    >
+                      <Check className="w-4 h-4"/> Accept
+                    </button>
+                    <button 
+                      onClick={() => handleOfferAction(offer._id, 'Counter')}
+                      className="col-span-1 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-bold text-sm transition-colors shadow-sm flex items-center justify-center"
+                    >
+                      Counter
+                    </button>
+                    <button 
+                      onClick={() => handleOfferAction(offer._id, 'Rejected')}
+                      className="col-span-1 py-2.5 bg-white border border-slate-200 text-rose-600 hover:bg-rose-50 hover:border-rose-200 rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-1"
+                    >
+                      <X className="w-4 h-4"/> Reject
+                    </button>
+                  </div>
                   <button 
-                    onClick={() => handleOfferAction(offer._id, 'Accepted')}
-                    className="col-span-1 py-2.5 bg-[#16A34A] hover:bg-[#22C55E] text-white rounded-xl font-bold text-sm transition-colors shadow-sm shadow-[#16A34A]/20 flex items-center justify-center gap-1"
+                    onClick={() => handleChatWithTrader(offer.traderId, offer.cropId, offer)}
+                    className="w-full py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl font-semibold text-xs transition-colors flex items-center justify-center gap-1.5 border border-blue-200/60"
                   >
-                    <Check className="w-4 h-4"/> Accept
-                  </button>
-                  <button 
-                    onClick={() => handleOfferAction(offer._id, 'Counter')}
-                    className="col-span-1 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-bold text-sm transition-colors shadow-sm flex items-center justify-center"
-                  >
-                    Counter
-                  </button>
-                  <button 
-                    onClick={() => handleOfferAction(offer._id, 'Rejected')}
-                    className="col-span-1 py-2.5 bg-white border border-slate-200 text-rose-600 hover:bg-rose-50 hover:border-rose-200 rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-1"
-                  >
-                    <X className="w-4 h-4"/> Reject
+                    <MessageSquare className="w-3.5 h-3.5 text-blue-600" /> Chat with Trader ({offer.traderId?.name || 'Trader'})
                   </button>
                 </div>
               </div>
@@ -517,14 +571,26 @@ const FarmerDashboard = () => {
                        <span className="truncate">Trader: {deal.traderId?.name}</span>
                     </div>
                   </div>
-                  <div className="text-right shrink-0 flex flex-col items-end gap-2">
+                  <div className="text-right shrink-0 flex flex-col items-end gap-1.5">
                     <p className="font-bold text-slate-900 text-lg">₹{deal.finalPrice}</p>
-                    <span className={`text-xs font-bold px-3 py-1 rounded-full ${
-                      deal.status === 'Completed' || deal.status === 'Accepted' || deal.status === 'Paid' ? 'bg-[#DCFCE7] text-[#16A34A]' : 
-                      deal.status === 'Rejected' ? 'bg-rose-100 text-rose-600' : 'bg-amber-100 text-amber-600'
-                    }`}>
-                      {deal.status}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleChatWithTrader(deal.traderId, deal.cropId, deal);
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-200/60 text-xs font-bold flex items-center gap-1 transition-colors"
+                        title="Open Chat with Trader"
+                      >
+                        <MessageSquare className="w-3.5 h-3.5" /> Chat
+                      </button>
+                      <span className={`text-xs font-bold px-3 py-1 rounded-full ${
+                        deal.status === 'Completed' || deal.status === 'Accepted' || deal.status === 'Paid' ? 'bg-[#DCFCE7] text-[#16A34A]' : 
+                        deal.status === 'Rejected' ? 'bg-rose-100 text-rose-600' : 'bg-amber-100 text-amber-600'
+                      }`}>
+                        {deal.status}
+                      </span>
+                    </div>
                   </div>
                 </div>
             ))}

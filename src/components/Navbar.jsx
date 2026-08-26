@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Leaf, MessageSquare, LogOut, User, Bell } from 'lucide-react';
 import { useContext, useState, useEffect } from 'react';
 import { AuthContext } from '../context/AuthContext';
@@ -6,8 +6,14 @@ import api from '../api/axios';
 
 const Navbar = () => {
   const { user, logout } = useContext(AuthContext);
+  const navigate = useNavigate();
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
+
+  const handleLogout = () => {
+    logout();
+    navigate('/');
+  };
 
   useEffect(() => {
     if (user) {
@@ -44,6 +50,7 @@ const Navbar = () => {
       <div className="hidden md:flex items-center gap-8 text-slate-600 font-medium">
         <Link to="/marketplace" className="hover:text-primary-600 transition-colors">Marketplace</Link>
         {(!user || user.role === 'farmer') && <Link to="/farmer-dashboard" className="hover:text-primary-600 transition-colors">Farmer Dashboard</Link>}
+        {user?.role === 'farmer' && <Link to="/plant-disease-detection" className="hover:text-primary-600 transition-colors text-emerald-600 font-semibold">Plant Health</Link>}
         {(!user || user.role === 'trader') && <Link to="/trader-dashboard" className="hover:text-primary-600 transition-colors">Trader Dashboard</Link>}
         <Link to="/ai-recommendation" className="hover:text-primary-600 transition-colors text-emerald-600 font-semibold">AI Assistant</Link>
         <Link to="/weather" className="hover:text-primary-600 transition-colors text-blue-500 font-semibold">Weather</Link>
@@ -97,7 +104,7 @@ const Navbar = () => {
               </div>
               <span className="text-sm font-semibold text-slate-700 hidden sm:block">{user.name.split(' ')[0]}</span>
             </div>
-            <button onClick={logout} className="text-slate-400 hover:text-red-500 transition-colors p-2" title="Logout">
+            <button onClick={handleLogout} className="text-slate-400 hover:text-red-500 transition-colors p-2" title="Logout">
               <LogOut className="w-5 h-5" />
             </button>
           </>

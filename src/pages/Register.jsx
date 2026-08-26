@@ -13,6 +13,7 @@ const Register = () => {
     address: ''
   });
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const { register } = useContext(AuthContext);
   const navigate = useNavigate();
 
@@ -23,13 +24,21 @@ const Register = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setLoading(true);
     try {
-      await register(formData);
-      navigate('/marketplace');
+      const data = await register(formData);
+      // Redirect based on role
+      const role = data.user?.role || formData.role;
+      if (role === 'farmer') navigate('/farmer-dashboard');
+      else if (role === 'trader') navigate('/trader-dashboard');
+      else navigate('/marketplace');
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to register');
+      setError(err.response?.data?.error || 'Failed to register. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
+
 
   return (
     <div className="min-h-[calc(100vh-100px)] flex items-center justify-center p-6">
@@ -127,10 +136,11 @@ const Register = () => {
           </div>
 
           <button 
-            type="submit" 
-            className="w-full py-4 bg-primary-500 hover:bg-primary-600 text-white rounded-xl font-bold transition-all shadow-lg shadow-primary-500/30 mt-6"
+            type="submit"
+            disabled={loading}
+            className="w-full py-4 bg-primary-500 hover:bg-primary-600 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-xl font-bold transition-all shadow-lg shadow-primary-500/30 mt-6"
           >
-            Create Account
+            {loading ? 'Creating Account...' : 'Create Account'}
           </button>
         </form>
 

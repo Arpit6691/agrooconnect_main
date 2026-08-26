@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node --watch server.js"
   },
   "keywords": [],
   "author": "",
@@ -27,6 +27,7 @@
     "multer": "^2.2.0",
     "multer-storage-cloudinary": "^4.0.0",
     "nodemailer": "^9.0.1",
+    "razorpay": "^2.9.8",
     "socket.io": "^4.8.3"
   }
 }

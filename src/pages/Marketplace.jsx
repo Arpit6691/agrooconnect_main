@@ -1,5 +1,6 @@
 import { useState, useEffect, useContext } from 'react';
-import { Search, Filter, MapPin, Star, ChevronDown, Loader, X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Search, Filter, MapPin, Star, ChevronDown, Loader, X, Trash2, User } from 'lucide-react';
 import api from '../api/axios';
 import { AuthContext } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -10,6 +11,7 @@ const Marketplace = () => {
   const [crops, setCrops] = useState([]);
   const [loading, setLoading] = useState(true);
   const { user } = useContext(AuthContext);
+  const navigate = useNavigate();
 
   const [selectedCrop, setSelectedCrop] = useState(null);
   const [offerPrice, setOfferPrice] = useState('');
@@ -70,6 +72,7 @@ const Marketplace = () => {
       });
       alert('Purchase successful! Deal has been created.');
       setBuyCrop(null);
+      navigate('/trader-dashboard');
     } catch (err) {
       alert(err.response?.data?.error || 'Error completing purchase');
     } finally {
@@ -116,12 +119,12 @@ const Marketplace = () => {
               <h2 className="text-2xl font-bold mb-6 text-slate-900">Make an Offer</h2>
               <div className="mb-6 p-4 bg-slate-50 rounded-2xl border border-slate-100">
                 <p className="font-semibold text-slate-800">{selectedCrop.cropName}</p>
-                <p className="text-sm text-slate-500">Asking Price: ${selectedCrop.price} / {selectedCrop.unit}</p>
+                <p className="text-sm text-slate-500">Asking Price: ₹{selectedCrop.price} / {selectedCrop.unit}</p>
                 <p className="text-sm text-slate-500">Available: {selectedCrop.quantity} {selectedCrop.unit}</p>
               </div>
               <form onSubmit={handleMakeOffer} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Your Price ($/{selectedCrop.unit})</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Your Price (₹/{selectedCrop.unit})</label>
                   <input 
                     type="number" 
                     required 
@@ -177,12 +180,12 @@ const Marketplace = () => {
                 <h3 className="font-bold text-slate-800 mb-2">Crop Details</h3>
                 <p className="text-sm text-slate-600 font-semibold">{buyCrop.cropName}</p>
                 <div className="flex justify-between text-sm text-slate-500 mt-1">
-                  <span>Price: ${buyCrop.price} / {buyCrop.unit}</span>
+                  <span>Price: ₹{buyCrop.price} / {buyCrop.unit}</span>
                   <span>Qty: {buyCrop.quantity} {buyCrop.unit}</span>
                 </div>
                 <div className="flex justify-between text-sm font-bold text-slate-900 mt-2 pt-2 border-t border-slate-200">
                   <span>Total Amount:</span>
-                  <span>${(buyCrop.price * buyCrop.quantity).toFixed(2)}</span>
+                  <span>₹{(buyCrop.price * buyCrop.quantity).toFixed(2)}</span>
                 </div>
               </div>
 
@@ -257,77 +260,100 @@ const Marketplace = () => {
         </div>
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-8">
-          {filteredCrops.map((crop, idx) => (
-            <motion.div 
-              key={crop._id}
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: idx * 0.1 }}
-              className="bg-white rounded-3xl overflow-hidden border border-slate-100 shadow-sm hover:shadow-xl transition-all group"
-            >
-              <div className="relative h-48 overflow-hidden">
-                <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors z-10"></div>
-                <img src={crop.images && crop.images.length > 0 ? crop.images[0] : 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?auto=format&fit=crop&w=500&q=80'} alt={crop.cropName} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
-                <div className="absolute top-4 right-4 z-20 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full text-sm font-bold text-slate-900 flex items-center gap-1">
-                  <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" /> {crop.farmerId?.rating || 'New'}
-                </div>
-              </div>
-              
-              <div className="p-6">
-                <div className="flex justify-between items-start mb-2">
-                  <h3 className="text-xl font-bold text-slate-900">{crop.cropName}</h3>
-                  <div className="text-right">
-                    <p className="text-xl font-bold text-primary-600">${crop.price}</p>
-                    <p className="text-xs text-slate-500">per {crop.unit}</p>
+          {filteredCrops.map((crop, idx) => {
+            const currentUserId = user?._id || user?.id;
+            const cropFarmerId = crop.farmerId?._id || crop.farmerId;
+            const isOwner = Boolean(
+              currentUserId &&
+              cropFarmerId &&
+              String(currentUserId) === String(cropFarmerId)
+            );
+
+            return (
+              <motion.div 
+                key={crop._id}
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: idx * 0.1 }}
+                className="bg-white rounded-3xl overflow-hidden border border-slate-100 shadow-sm hover:shadow-xl transition-all group"
+              >
+                <div className="relative h-48 overflow-hidden">
+                  <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors z-10"></div>
+                  <img src={crop.images && crop.images.length > 0 ? crop.images[0] : 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?auto=format&fit=crop&w=500&q=80'} alt={crop.cropName} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                  <div className="absolute top-4 right-4 z-20 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full text-sm font-bold text-slate-900 flex items-center gap-1">
+                    <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" /> {crop.farmerId?.rating || 'New'}
                   </div>
+                  {isOwner && (
+                    <div className="absolute top-4 left-4 z-20 bg-[#16A34A] text-white px-3 py-1 rounded-full text-xs font-bold shadow-sm">
+                      Your Listing
+                    </div>
+                  )}
                 </div>
                 
-                <div className="space-y-2 mb-6">
-                  <p className="text-slate-600 flex items-center gap-2 text-sm">
-                    <span className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-600">{crop.farmerId?.name?.charAt(0) || 'F'}</span>
-                    {crop.farmerId?.name || 'Unknown Farmer'}
-                  </p>
-                  <p className="text-slate-500 flex items-center gap-2 text-sm">
-                    <MapPin className="w-4 h-4" /> {crop.location}
-                  </p>
-                  <p className="text-slate-500 flex items-center gap-2 text-sm">
-                    <span className="font-medium">Qty Available:</span> {crop.quantity} {crop.unit}
-                  </p>
-                </div>
-                
-                {user?.role === 'trader' ? (
-                  <div className="flex gap-2">
-                    <button 
-                      onClick={() => handleBuy(crop)}
-                      className="flex-1 py-3 bg-green-50 text-green-600 hover:bg-green-500 hover:text-white rounded-xl font-semibold transition-colors flex items-center justify-center gap-2"
-                    >
-                      Buy 
-                    </button>
-                    <button 
-                      onClick={() => setSelectedCrop(crop)}
-                      className="flex-1 py-3 bg-primary-50 text-primary-600 hover:bg-primary-500 hover:text-white rounded-xl font-semibold transition-colors flex items-center justify-center gap-2"
-                    >
-                      Make Offer <ChevronDown className="w-4 h-4 -rotate-90" />
-                    </button>
+                <div className="p-6">
+                  <div className="flex justify-between items-start mb-2">
+                    <h3 className="text-xl font-bold text-slate-900">{crop.cropName}</h3>
+                    <div className="text-right">
+                      <p className="text-xl font-bold text-[#16A34A]">₹{crop.price}</p>
+                      <p className="text-xs text-slate-500">per {crop.unit}</p>
+                    </div>
                   </div>
-                ) : (user?._id === crop.farmerId?._id || user?.id === crop.farmerId?._id) ? (
-                  <button 
-                    onClick={() => handleDeleteCrop(crop._id)}
-                    className="w-full py-3 bg-rose-50 text-rose-600 hover:bg-rose-500 hover:text-white rounded-xl font-semibold transition-colors flex items-center justify-center gap-2"
-                  >
-                    Delete Listing
-                  </button>
-                ) : (
-                  <button 
-                    disabled
-                    className="w-full py-3 bg-slate-50 text-slate-400 rounded-xl font-semibold flex items-center justify-center gap-2"
-                  >
-                    Log in as Trader to Offer/Buy
-                  </button>
-                )}
-              </div>
-            </motion.div>
-          ))}
+                  
+                  <div className="space-y-2 mb-6">
+                    <p className="text-slate-600 flex items-center gap-2 text-sm">
+                      <span className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-600">{crop.farmerId?.name?.charAt(0) || 'F'}</span>
+                      {crop.farmerId?.name || 'Unknown Farmer'}
+                    </p>
+                    <p className="text-slate-500 flex items-center gap-2 text-sm">
+                      <MapPin className="w-4 h-4 text-[#16A34A]" /> {crop.location}
+                    </p>
+                    <p className="text-slate-500 flex items-center gap-2 text-sm">
+                      <span className="font-medium">Qty Available:</span> {crop.quantity} {crop.unit}
+                    </p>
+                  </div>
+                  
+                  {isOwner ? (
+                    /* Only the farmer who created this listing can delete it */
+                    <button 
+                      onClick={() => handleDeleteCrop(crop._id)}
+                      className="w-full py-3 bg-rose-50 text-rose-600 hover:bg-rose-500 hover:text-white rounded-xl font-semibold transition-colors flex items-center justify-center gap-2 border border-rose-100"
+                    >
+                      <Trash2 className="w-4 h-4" /> Delete My Listing
+                    </button>
+                  ) : user?.role === 'trader' ? (
+                    /* Traders can Buy or Make Offer */
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => handleBuy(crop)}
+                        className="flex-1 py-3 bg-green-50 text-green-700 hover:bg-[#16A34A] hover:text-white rounded-xl font-semibold transition-colors flex items-center justify-center gap-2 border border-green-100"
+                      >
+                        Buy 
+                      </button>
+                      <button 
+                        onClick={() => setSelectedCrop(crop)}
+                        className="flex-1 py-3 bg-emerald-50 text-emerald-700 hover:bg-[#16A34A] hover:text-white rounded-xl font-semibold transition-colors flex items-center justify-center gap-1 border border-emerald-100"
+                      >
+                        Make Offer <ChevronDown className="w-4 h-4 -rotate-90" />
+                      </button>
+                    </div>
+                  ) : user?.role === 'farmer' ? (
+                    /* Other Farmers cannot delete someone else's crop */
+                    <div className="w-full py-3 bg-slate-50 text-slate-600 rounded-xl text-sm font-medium text-center border border-slate-100 flex items-center justify-center gap-1.5">
+                      <User className="w-4 h-4 text-slate-400" /> Listed by {crop.farmerId?.name || 'Farmer'}
+                    </div>
+                  ) : (
+                    /* Logged out visitor */
+                    <button 
+                      onClick={() => navigate('/login')}
+                      className="w-full py-3 bg-emerald-50 text-emerald-700 hover:bg-[#16A34A] hover:text-white rounded-xl font-semibold transition-colors flex items-center justify-center gap-2 border border-emerald-100"
+                    >
+                      Log in to Buy or Offer
+                    </button>
+                  )}
+                </div>
+              </motion.div>
+            );
+          })}
         </div>
       )}
     </div>

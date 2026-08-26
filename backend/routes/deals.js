@@ -3,6 +3,8 @@ const {
   getDeals, getDeal, createDeal, 
   addTransport, confirmHandover, confirmReceive, 
   submitPayment, verifyPayment, rejectPayment,
+  createRazorpayOrder, verifyRazorpayPayment,
+  createMockPayment, completeMockPayment,
   cancelDeal, disputeDeal,
   addDealComplaint, addDealReview 
 } = require('../controllers/dealController');
@@ -25,6 +27,10 @@ router.post('/:id/receive', confirmReceive);
 router.post('/:id/payment', submitPayment);
 router.post('/:id/confirm-payment', verifyPayment);
 router.post('/:id/reject-payment', rejectPayment);
+router.post('/:id/create-razorpay-order', createRazorpayOrder);
+router.post('/:id/verify-razorpay-payment', verifyRazorpayPayment);
+router.post('/:id/create-mock-payment', createMockPayment);
+router.post('/:id/complete-mock-payment', completeMockPayment);
 router.post('/:id/cancel', cancelDeal);
 router.post('/:id/dispute', disputeDeal);
 

@@ -1,35 +1,59 @@
 import { useState, useEffect, useContext, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Search, ShoppingBag, Clock, CheckCircle, BarChart3, TrendingUp, AlertCircle, Eye, FileText, ShoppingCart, TrendingDown, ClipboardList, Activity } from 'lucide-react';
+import { Search, ShoppingBag, Clock, CheckCircle, BarChart3, TrendingUp, AlertCircle, Eye, FileText, ShoppingCart, TrendingDown, ClipboardList, Activity, MessageSquare } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import api from '../api/axios';
 import { AuthContext } from '../context/AuthContext';
 
 const TraderDashboard = () => {
-  const { user } = useContext(AuthContext);
+  const { user, loading: authLoading } = useContext(AuthContext);
   const navigate = useNavigate();
   const [offers, setOffers] = useState([]);
   const [deals, setDeals] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  const handleChatWithFarmer = (farmer, crop, offerOrDeal) => {
+    const farmerId = farmer?._id || farmer;
+    const farmerName = farmer?.name || 'Farmer';
+    const cropName = crop?.cropName || 'Crop';
+    const initialMsg = offerOrDeal?.offeredPrice 
+      ? `Hi ${farmerName}, I placed an offer of ₹${offerOrDeal.offeredPrice} for your ${cropName} (${offerOrDeal.quantity} ${crop?.unit || 'kg'}). Let's discuss!`
+      : `Hi ${farmerName}, regarding our deal for ${cropName}.`;
+
+    navigate('/chat', {
+      state: {
+        receiverId: farmerId,
+        receiverName: farmerName,
+        initialMessage: initialMsg
+      }
+    });
+  };
+
   useEffect(() => {
+    if (authLoading) return;
+    if (!user || user.role !== 'trader') {
+      navigate('/login');
+      return;
+    }
+
     const fetchData = async () => {
       try {
-        const [offersRes, dealsRes] = await Promise.all([
+        // Fetch independently so one failure doesn't block the other
+        const [offersRes, dealsRes] = await Promise.allSettled([
           api.get('/offers'),
           api.get('/deals')
         ]);
-        setOffers(offersRes.data.data);
-        setDeals(dealsRes.data.data);
+        if (offersRes.status === 'fulfilled') setOffers(offersRes.value.data.data);
+        if (dealsRes.status === 'fulfilled') setDeals(dealsRes.value.data.data);
       } catch (err) {
         console.error(err);
       } finally {
         setLoading(false);
       }
     };
-    if (user) fetchData();
-  }, [user]);
+    fetchData();
+  }, [user, authLoading, navigate]);
 
   // Aggregate deal data for the chart
   const chartData = useMemo(() => {
@@ -71,7 +95,7 @@ const TraderDashboard = () => {
 
       <div className="grid md:grid-cols-4 gap-6 mb-8">
         {[
-          { title: "Total Spent", value: `$${totalSpent.toLocaleString()}`, icon: ShoppingCart, color: "text-blue-500", bg: "bg-blue-50" },
+          { title: "Total Spent", value: `₹${totalSpent.toLocaleString()}`, icon: ShoppingCart, color: "text-blue-500", bg: "bg-blue-50" },
           { title: "Active Offers", value: offers.filter(o => o.status === 'Pending').length, icon: Activity, color: "text-amber-500", bg: "bg-amber-50" },
           { title: "Completed Deals", value: deals.length, icon: ClipboardList, color: "text-emerald-500", bg: "bg-emerald-50" },
           { title: "Avg. Savings", value: "15%", icon: TrendingDown, color: "text-purple-500", bg: "bg-purple-50" }
@@ -127,7 +151,7 @@ const TraderDashboard = () => {
                     </div>
                     <div>
                       <h4 className="font-semibold text-slate-900">{offer.cropId?.cropName || 'Crop'}</h4>
-                      <p className="text-sm text-slate-500">Offered: ${offer.offeredPrice}/{offer.cropId?.unit || 'unit'}</p>
+                      <p className="text-sm text-slate-500">Offered: ₹{offer.offeredPrice}/{offer.cropId?.unit || 'unit'}</p>
                     </div>
                   </div>
                   <div className="flex gap-2 items-center">
@@ -140,6 +164,15 @@ const TraderDashboard = () => {
                       {offer.status}
                     </span>
                   </div>
+                </div>
+                <div className="flex items-center justify-between pt-2 border-t border-slate-50">
+                  <span className="text-xs text-slate-400">Farmer: <span className="font-semibold text-slate-700">{offer.farmerId?.name || 'Farmer'}</span></span>
+                  <button 
+                    onClick={() => handleChatWithFarmer(offer.farmerId, offer.cropId, offer)}
+                    className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl font-bold text-xs transition-colors flex items-center gap-1.5 border border-blue-200/60"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5 text-blue-600" /> Chat with Farmer
+                  </button>
                 </div>
                 {offer.status === 'Accepted' && offer.farmerId?.phone && (
                   <div className="mt-2 p-3 bg-emerald-50 rounded-lg border border-emerald-100">
@@ -166,32 +199,54 @@ const TraderDashboard = () => {
             <div 
               key={deal._id} 
               onClick={() => navigate(`/deals/${deal._id}`)} 
-              className="border border-slate-100 rounded-2xl p-5 hover:shadow-md transition-shadow cursor-pointer bg-slate-50 hover:bg-white"
+              className="border border-slate-100 rounded-2xl p-5 hover:shadow-md transition-shadow cursor-pointer bg-slate-50 hover:bg-white flex flex-col justify-between group"
             >
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <h4 className="font-bold text-slate-900 truncate">{deal.cropId?.cropName}</h4>
-                  <p className="text-sm text-slate-500">Farmer: {deal.farmerId?.name}</p>
+              <div>
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <h4 className="font-bold text-slate-900 truncate">{deal.cropId?.cropName}</h4>
+                    <p className="text-sm text-slate-500">Farmer: {deal.farmerId?.name}</p>
+                  </div>
+                  <span className={`px-3 py-1 text-xs font-bold rounded-full ${
+                    deal.status === 'Completed' ? 'bg-emerald-100 text-emerald-700' :
+                    deal.status === 'Cancelled' ? 'bg-rose-100 text-rose-700' :
+                    'bg-blue-100 text-blue-700'
+                  }`}>
+                    {deal.status}
+                  </span>
                 </div>
-                <span className={`px-3 py-1 text-xs font-bold rounded-full ${
-                  deal.status === 'Completed' ? 'bg-emerald-100 text-emerald-700' :
-                  deal.status === 'Cancelled' ? 'bg-rose-100 text-rose-700' :
-                  'bg-blue-100 text-blue-700'
-                }`}>
-                  {deal.status}
-                </span>
+                <div className="space-y-2 mb-4">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-500">Total Amount:</span>
+                    <span className="font-bold text-slate-900">₹{deal.finalPrice * deal.quantity}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-500">Quantity:</span>
+                    <span className="font-medium text-slate-900">{deal.quantity} {deal.cropId?.unit || 'kg'}</span>
+                  </div>
+                </div>
               </div>
-              <div className="space-y-2 mb-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-slate-500">Total Amount:</span>
-                  <span className="font-bold text-slate-900">${deal.finalPrice * deal.quantity}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-slate-500">Quantity:</span>
-                  <span className="font-medium text-slate-900">{deal.quantity} {deal.cropId?.unit || 'kg'}</span>
-                </div>
+
+              <div className="flex items-center gap-2 pt-3 border-t border-slate-100">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleChatWithFarmer(deal.farmerId, deal.cropId, deal);
+                  }}
+                  className="flex-1 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl font-bold text-xs transition-colors flex items-center justify-center gap-1.5 border border-blue-200/60"
+                >
+                  <MessageSquare className="w-3.5 h-3.5 text-blue-600" /> Chat with Farmer
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigate(`/deals/${deal._id}`);
+                  }}
+                  className="py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors"
+                >
+                  Tracker
+                </button>
               </div>
-              <p className="text-xs text-primary-600 font-bold mt-4 text-center">Click to view Deal Tracker</p>
             </div>
           ))}
         </div>

@@ -19,44 +19,38 @@ const generateOTP = () => {
   return Math.floor(100000 + Math.random() * 900000).toString();
 };
 
-// @desc    Register user
+// @desc    Register user (no OTP - immediate account creation)
 // @route   POST /api/auth/register
 // @access  Public
 exports.register = async (req, res) => {
   try {
-    const { name, email, password, role, phone, location } = req.body;
-    
-    // Check if user exists
-    let user = await User.findOne({ email });
-    if (user) {
-      return res.status(400).json({ success: false, error: 'User already exists' });
+    let { name, email, password, role, phone, location } = req.body;
+
+    if (!name || !email || !password || !role) {
+      return res.status(400).json({ success: false, error: 'Please provide name, email, password and role' });
     }
 
-    const otp = generateOTP();
-    const otpExpiry = Date.now() + 10 * 60 * 1000; // 10 minutes
+    const cleanEmail = email.toLowerCase().trim();
 
-    user = await User.create({
-      name,
-      email,
+    // Check if user already exists
+    const existingUser = await User.findOne({ email: cleanEmail });
+    if (existingUser) {
+      return res.status(400).json({ success: false, error: 'An account with this email already exists' });
+    }
+
+    // Create user - immediately verified, no OTP needed
+    const user = await User.create({
+      name: name.trim(),
+      email: cleanEmail,
       password,
       role,
-      phone,
-      location,
-      otp,
-      otpExpiry
+      phone: phone ? phone.trim() : '',
+      location: location ? location.trim() : '',
+      isVerified: true
     });
 
-    console.log(`\n\n================================`);
-    console.log(`DEVELOPMENT MODE - OTP FOR ${email}: ${otp}`);
-    console.log(`================================\n\n`);
-
-    await sendEmail({
-      email: user.email,
-      subject: 'AgroConnect Verification Code',
-      message: `Your verification code is ${otp}`
-    });
-
-    res.status(201).json({ success: true, message: 'OTP sent to email', userId: user._id });
+    const token = generateToken(user._id);
+    res.status(201).json({ success: true, token, user });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }
@@ -68,8 +62,9 @@ exports.register = async (req, res) => {
 exports.verifyOTP = async (req, res) => {
   try {
     const { email, otp } = req.body;
+    const cleanEmail = email ? email.toLowerCase().trim() : '';
 
-    const user = await User.findOne({ email, otp, otpExpiry: { $gt: Date.now() } });
+    const user = await User.findOne({ email: cleanEmail, otp, otpExpiry: { $gt: Date.now() } });
 
     if (!user) {
       return res.status(400).json({ success: false, error: 'Invalid or expired OTP' });
@@ -95,17 +90,19 @@ exports.login = async (req, res) => {
     const { email, password } = req.body;
 
     if (!email || !password) {
-      return res.status(400).json({ success: false, error: 'Please provide email and password' });
+      return res.status(400).json({ success: false, error: 'Please provide both email and password' });
     }
 
-    const user = await User.findOne({ email }).select('+password');
+    const cleanEmail = email.toLowerCase().trim();
+
+    const user = await User.findOne({ email: cleanEmail }).select('+password');
     if (!user) {
-      return res.status(401).json({ success: false, error: 'Invalid credentials' });
+      return res.status(401).json({ success: false, error: 'No account found with this email address' });
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      return res.status(401).json({ success: false, error: 'Invalid credentials' });
+      return res.status(401).json({ success: false, error: 'Incorrect password. Please check and try again.' });
     }
 
     const token = generateToken(user._id);
