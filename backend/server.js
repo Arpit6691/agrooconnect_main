@@ -30,8 +30,11 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 // const mongoSanitize = require('express-mongo-sanitize'); // Incompatible with Express v5
 
-// Set security headers
-app.use(helmet());
+// Set security headers (configured for cross-origin API and media)
+app.use(helmet({
+  crossOriginResourcePolicy: false,
+  crossOriginEmbedderPolicy: false
+}));
 // Prevent XSS attacks
 // app.use(xss()); // Incompatible with Express v5
 
