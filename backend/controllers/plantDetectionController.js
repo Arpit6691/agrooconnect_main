@@ -31,8 +31,9 @@ exports.analyzeImage = async (req, res) => {
       });
     }
 
-    // Build the image URL using the same pattern as cropController.js
-    const imageUrl = `http://localhost:${process.env.PORT || 5000}/uploads/${req.file.filename}`;
+    // Build the image URL using dynamic host
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const imageUrl = `${baseUrl}/uploads/${req.file.filename}`;
 
     // Run the detection service
     const result = await detector.detect({
