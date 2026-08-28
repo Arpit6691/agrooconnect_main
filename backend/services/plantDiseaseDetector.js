@@ -1,70 +1,238 @@
+const PythonMLProvider = require('./providers/pythonMLProvider');
 const GeminiProvider = require('./providers/geminiProvider');
-const HuggingFaceProvider = require('./providers/huggingfaceProvider');
-const MockProvider = require('./providers/mockProvider');
 const { normalizeDiagnosis } = require('./diseaseNormalizer');
 
-// Initialize singleton instances of available providers
+// ==========================================
+// INITIALIZE PROVIDERS
+// ==========================================
+
 const providers = {
-  gemini: new GeminiProvider(),
-  huggingface: new HuggingFaceProvider(),
-  mock: new MockProvider()
+  pythonml: new PythonMLProvider(),
+  gemini: new GeminiProvider()
 };
 
-/**
- * Determine the active provider based on environment and availability
- */
+
+// ==========================================
+// ALWAYS USE PYTHON ML FOR DISEASE DETECTION
+// ==========================================
+
 function getActiveProvider() {
-  const configuredProvider = (process.env.PLANT_DETECTION_PROVIDER || '').toLowerCase().trim();
-
-  if (configuredProvider === 'huggingface' && providers.huggingface.isConfigured()) {
-    return providers.huggingface;
-  }
-
-  if (configuredProvider === 'gemini' && providers.gemini.isConfigured()) {
-    return providers.gemini;
-  }
-
-  if (configuredProvider === 'mock') {
-    return providers.mock;
-  }
-
-  // Automatic default: if Gemini is configured, use it; otherwise fallback to mock
-  if (providers.gemini.isConfigured()) {
-    return providers.gemini;
-  }
-
-  return providers.mock;
+  return providers.pythonml;
 }
 
-/**
- * Main plant disease detection interface
- * @param {Object} imageInfo
- * @param {string} imageInfo.filePath - Absolute path to local image file
- * @param {string} imageInfo.mimetype - Image MIME type (e.g. image/jpeg)
- * @param {string} imageInfo.filename - Image original/saved filename
- * @returns {Promise<Object>} Normalized diagnosis result
- */
-async function detect(imageInfo) {
-  const provider = getActiveProvider();
-  const providerName = provider.name;
+
+// ==========================================
+// GET TREATMENT FROM GEMINI
+// ==========================================
+
+async function getTreatmentFromGemini(prediction) {
+
+  // If Gemini API is not configured
+  if (!providers.gemini.isConfigured()) {
+
+    console.warn(
+      '[PlantDiseaseDetector] Gemini is not configured.'
+    );
+
+    return {
+      description:
+        prediction.status === 'Healthy'
+          ? 'The plant appears healthy.'
+          : `The ML model detected ${prediction.diseaseName}.`,
+
+      possibleCauses: [],
+
+      recommendedTreatment: [],
+
+      preventionTips: [],
+
+      recommendations: [],
+
+      sources: []
+    };
+  }
+
 
   try {
-    const rawResult = await provider.analyzePlantImage(imageInfo);
-    return normalizeDiagnosis(rawResult, providerName);
-  } catch (providerError) {
-    console.error(`[PlantDiseaseDetector] Provider '${providerName}' failed:`, providerError.message);
 
-    // If cloud provider is down / overloaded (503 / 429), use offline agronomic diagnosis fallback
-    console.warn(`[PlantDiseaseDetector] Falling back to high-accuracy offline Agronomic Diagnosis Engine.`);
-    const mockResult = await providers.mock.analyzePlantImage(imageInfo);
-    const diagnosis = normalizeDiagnosis(mockResult, 'mock');
-    
-    // Add advisory note about temporary high demand
-    if (!diagnosis.recommendations) diagnosis.recommendations = [];
-    diagnosis.recommendations.unshift('Note: Cloud AI Vision was experiencing peak demand; diagnosis provided via offline agronomic analyzer.');
-    return diagnosis;
+    // Gemini generates treatment based on
+    // the disease predicted by Python ML
+    const treatment =
+      await providers.gemini.generateTreatment(prediction);
+
+    return {
+      description: treatment.description || '',
+
+      possibleCauses:
+        Array.isArray(treatment.possibleCauses)
+          ? treatment.possibleCauses
+          : [],
+
+      recommendedTreatment:
+        Array.isArray(treatment.recommendedTreatment)
+          ? treatment.recommendedTreatment
+          : [],
+
+      preventionTips:
+        Array.isArray(treatment.preventionTips)
+          ? treatment.preventionTips
+          : [],
+
+      recommendations:
+        Array.isArray(treatment.recommendations)
+          ? treatment.recommendations
+          : [],
+
+      sources:
+        Array.isArray(treatment.sources)
+          ? treatment.sources
+          : []
+    };
+
+  } catch (error) {
+
+    console.error(
+      '[PlantDiseaseDetector] Gemini treatment generation failed:',
+      error.message
+    );
+
+    // Disease prediction should still work
+    // even if Gemini fails
+
+    return {
+      description:
+        prediction.description ||
+        `The ML model detected ${prediction.diseaseName}.`,
+
+      possibleCauses: [],
+
+      recommendedTreatment: [],
+
+      preventionTips: [],
+
+      recommendations: [],
+
+      sources: []
+    };
   }
 }
+
+
+// ==========================================
+// MAIN DISEASE DETECTION FUNCTION
+// ==========================================
+
+async function detect(imageInfo) {
+
+  const provider = getActiveProvider();
+
+  try {
+
+    // --------------------------------------
+    // STEP 1: PYTHON ML DETECTS DISEASE
+    // --------------------------------------
+
+    console.log(
+      '[PlantDiseaseDetector] Running local Python ML prediction...'
+    );
+
+    const rawResult =
+      await provider.analyzePlantImage(imageInfo);
+
+
+    // Normalize Python ML result
+    let diagnosis =
+      normalizeDiagnosis(rawResult, provider.name);
+
+
+    console.log(
+      `[PlantDiseaseDetector] ML Prediction: ` +
+      `${diagnosis.cropName} - ${diagnosis.diseaseName}`
+    );
+
+
+    // --------------------------------------
+    // STEP 2: GEMINI GENERATES GUIDANCE
+    // --------------------------------------
+
+    console.log(
+      '[PlantDiseaseDetector] Generating treatment and precautions with Gemini...'
+    );
+
+    const treatmentData =
+      await getTreatmentFromGemini(diagnosis);
+
+
+    // --------------------------------------
+    // STEP 3: MERGE ML + GEMINI DATA
+    // --------------------------------------
+
+    diagnosis = {
+
+      // Keep all original ML prediction data
+      ...diagnosis,
+
+
+      // Gemini-generated description
+      description:
+        treatmentData.description ||
+        diagnosis.description,
+
+
+      // Gemini-generated possible causes
+      possibleCauses:
+        treatmentData.possibleCauses || [],
+
+
+      // Gemini-generated treatment
+      recommendedTreatment:
+        treatmentData.recommendedTreatment || [],
+
+
+      // Gemini-generated prevention tips
+      preventionTips:
+        treatmentData.preventionTips || [],
+
+
+      // Gemini-generated recommendations
+      recommendations:
+        treatmentData.recommendations || [],
+
+
+      // Gemini-generated sources
+      sources:
+        treatmentData.sources || []
+    };
+
+
+    console.log(
+      '[PlantDiseaseDetector] Complete diagnosis generated successfully.'
+    );
+
+
+    console.log(
+      '[PlantDiseaseDetector] Sources:',
+      diagnosis.sources
+    );
+
+
+    return diagnosis;
+
+  } catch (error) {
+
+    console.error(
+      '[PlantDiseaseDetector] Python ML prediction failed:',
+      error.message
+    );
+
+    throw error;
+  }
+}
+
+
+// ==========================================
+// EXPORT
+// ==========================================
 
 module.exports = {
   detect,

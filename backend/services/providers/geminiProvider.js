@@ -1,147 +1,224 @@
 const BaseProvider = require('./baseProvider');
 const { GoogleGenAI } = require('@google/genai');
-const fs = require('fs');
 
 /**
- * Gemini Multimodal Vision AI Provider for Plant Disease Detection
+ * Gemini Provider
+ *
+ * Used ONLY for:
+ * - Disease description
+ * - Possible causes
+ * - Treatment
+ * - Precautions
+ * - Prevention tips
+ * - Recommendations
+ * - Reference sources
+ *
+ * Disease prediction is done by the local Python MobileNetV2 model.
  */
 class GeminiProvider extends BaseProvider {
   constructor(apiKey = process.env.GEMINI_API_KEY) {
     super('gemini');
-    this.apiKey = apiKey;
-    this.candidateModels = [
-      process.env.GEMINI_VISION_MODEL || 'gemini-3.6-flash',
-      'gemini-3.6-flash',
-      'gemini-3.5-flash-lite'
-    ].filter(Boolean);
 
-    if (this.apiKey && this.apiKey !== 'dummy_gemini_key') {
-      this.ai = new GoogleGenAI({ apiKey: this.apiKey });
+    this.apiKey = apiKey;
+
+    this.modelName =
+      process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+
+    if (
+      this.apiKey &&
+      this.apiKey !== 'dummy_gemini_key'
+    ) {
+      this.ai = new GoogleGenAI({
+        apiKey: this.apiKey
+      });
     } else {
       this.ai = null;
     }
   }
 
   /**
-   * Check if Gemini is configured with a valid key
+   * Check whether Gemini API is configured
    */
   isConfigured() {
-    return Boolean(this.apiKey && this.apiKey !== 'dummy_gemini_key' && this.ai);
+    return Boolean(
+      this.apiKey &&
+      this.apiKey !== 'dummy_gemini_key' &&
+      this.ai
+    );
   }
 
-  async analyzePlantImage(imageInfo) {
+  /**
+   * Generate agricultural guidance based ONLY
+   * on the disease predicted by the Python ML model.
+   */
+  async generateTreatment(prediction) {
     if (!this.isConfigured()) {
-      throw new Error('Gemini API key is missing or invalid. Please check your backend .env configuration.');
+      throw new Error(
+        'Gemini API key is missing or invalid.'
+      );
     }
 
-    if (!imageInfo || !imageInfo.filePath || !fs.existsSync(imageInfo.filePath)) {
-      throw new Error('Image file not found on disk for AI vision analysis');
+    const {
+      cropName,
+      diseaseName,
+      status,
+      confidence,
+      severity
+    } = prediction;
+
+    const prompt = `
+You are an agricultural guidance assistant.
+
+IMPORTANT:
+
+The crop and disease have ALREADY been predicted by a local
+Machine Learning model.
+
+DO NOT change, verify, or predict another crop or disease.
+
+Use exactly this prediction:
+
+Crop: ${cropName}
+Disease: ${diseaseName || 'Healthy'}
+Status: ${status}
+Confidence: ${confidence}%
+Severity: ${severity}
+
+Your job is ONLY to provide agricultural guidance
+for this already predicted result.
+
+If the plant is diseased, provide:
+
+1. A simple description of the disease.
+2. 3-4 possible causes.
+3. 3-4 recommended treatments or immediate actions.
+4. 3-4 prevention tips.
+5. 2-3 additional recommendations.
+
+If the plant is healthy, provide:
+
+1. A short healthy plant description.
+2. An empty possibleCauses array.
+3. An empty recommendedTreatment array.
+4. 3-4 prevention and maintenance tips.
+5. 2-3 monitoring recommendations.
+
+IMPORTANT SAFETY RULES:
+
+- Do not change the predicted crop.
+- Do not change the predicted disease.
+- Do not invent another diagnosis.
+- Give practical and simple agricultural advice.
+- Avoid dangerous pesticide or fungicide dosage instructions.
+- Recommend checking local agricultural regulations and product labels.
+
+SOURCES:
+
+Also provide 2-4 trustworthy agricultural or scientific
+reference sources related to the predicted crop or disease.
+
+Prefer authoritative organizations such as:
+
+- USDA
+- UC IPM
+- Cornell University
+- University agricultural extension services
+- FAO
+- APS (American Phytopathological Society)
+- Government agricultural departments
+
+IMPORTANT SOURCE RULES:
+
+- Do NOT invent fake URLs.
+- Only include a URL if you are reasonably confident it is correct.
+- If unsure about the exact URL, set "url" to null.
+- Sources should be relevant to the predicted disease.
+
+Return ONLY valid JSON.
+
+Use exactly this format:
+
+{
+  "description": "string",
+  "possibleCauses": [
+    "string"
+  ],
+  "recommendedTreatment": [
+    "string"
+  ],
+  "preventionTips": [
+    "string"
+  ],
+  "recommendations": [
+    "string"
+  ],
+  "sources": [
+    {
+      "name": "Organization name",
+      "title": "Relevant article or resource title",
+      "url": "https://example.com/article"
     }
+  ]
+}
 
-    // Read image buffer and convert to base64
-    const fileBuffer = fs.readFileSync(imageInfo.filePath);
-    const base64Data = fileBuffer.toString('base64');
-    const mimeType = imageInfo.mimetype || 'image/jpeg';
+Do NOT wrap the JSON inside markdown.
+Do NOT add any text before or after the JSON.
+`;
 
-    const systemPrompt = `You are an expert agricultural plant pathologist and agronomist. 
-Analyze the provided image of a plant/leaf and identify any visible plant disease, pest damage, nutrient deficiency, or confirm if the plant is healthy.
+    try {
+      console.log(
+        `[GeminiProvider] Generating guidance for: ${cropName} - ${diseaseName}`
+      );
 
-CRITICAL INSTRUCTIONS:
-1. If the image is NOT a plant, leaf, or crop (e.g. human face, animal, random object), or if the image is too blurry/unclear to make any assessment:
-   Respond ONLY with a JSON object where "status" is "Uncertain", "cropName" is "Unknown", "diseaseName" is "Unclear Image / Non-Plant", "confidence" is 20, "description" explains that a clearer photo of a plant leaf is required.
-
-2. If the plant is HEALTHY:
-   - "status": "Healthy"
-   - "diseaseName": null
-   - "confidence": number between 80 and 99
-   - "severity": "None"
-   - "possibleCauses": []
-   - "recommendedTreatment": []
-   - "preventionTips": []
-   - "recommendations": [array of 3-4 healthy plant maintenance and monitoring tips]
-   - "message": summary describing the healthy condition of the crop.
-
-3. If the plant is DISEASED:
-   - "status": "Diseased"
-   - "cropName": identified crop/plant name (e.g. Tomato, Potato, Corn, Wheat, Rice, Apple, Pepper, Cotton, etc.)
-   - "diseaseName": standardized disease name (e.g. Early Blight, Late Blight, Cercospora Leaf Spot, Alternaria Leaf Spot, Powdery Mildew, Rust, Bacterial Blight, Leaf Mosaic, Anthracnose, etc.)
-   - "confidence": numeric percentage (0-100)
-   - "severity": "Low", "Moderate", or "High"
-   - "description": 2-3 sentence overview of the pathogen and visual symptoms
-   - "possibleCauses": [array of 3-4 environmental and biological causes]
-   - "recommendedTreatment": [array of 3-4 safe, actionable treatments; avoid recommending hazardous chemical dosages; recommend safe registered fungicides/bactericides and cultural practices]
-   - "preventionTips": [array of 3-4 agronomic prevention methods like crop rotation, resistant varieties, drip irrigation]
-   - "recommendations": [array of 2-3 advisory notes including consulting local agricultural extension officers]
-
-4. Output Format:
-   Respond ONLY with a valid JSON object matching the keys:
-   {
-     "cropName": string,
-     "diseaseName": string or null,
-     "status": "Healthy" | "Diseased" | "Uncertain",
-     "confidence": number,
-     "severity": "None" | "Low" | "Moderate" | "High",
-     "description": string,
-     "possibleCauses": string[],
-     "recommendedTreatment": string[],
-     "preventionTips": string[],
-     "recommendations": string[],
-     "message": string or null
-   }
-   Do NOT wrap in markdown \`\`\`json or add text outside the JSON.`;
-
-    const imagePart = {
-      inlineData: {
-        data: base64Data,
-        mimeType: mimeType
-      }
-    };
-
-    let lastError = null;
-
-    // Try candidate models in order if one experiences 503 high demand
-    for (const modelName of this.candidateModels) {
-      try {
-        console.log(`[GeminiProvider] Attempting vision analysis with model: ${modelName}`);
-
-        const response = await this.ai.models.generateContent({
-          model: modelName,
-          contents: [
-            systemPrompt,
-            imagePart
-          ]
+      const response =
+        await this.ai.models.generateContent({
+          model: this.modelName,
+          contents: prompt
         });
 
-        if (!response || !response.text) {
-          throw new Error(`Empty response received from Gemini Vision AI (${modelName})`);
-        }
-
-        // Clean potential markdown wrapping
-        let cleanText = response.text.replace(/```json/gi, '').replace(/```/g, '').trim();
-        
-        let parsed;
-        try {
-          parsed = JSON.parse(cleanText);
-        } catch (parseErr) {
-          const jsonMatch = cleanText.match(/\{[\s\S]*\}/);
-          if (jsonMatch) {
-            parsed = JSON.parse(jsonMatch[0]);
-          } else {
-            throw new Error(`Failed to parse structured JSON from Gemini Vision AI response (${modelName})`);
-          }
-        }
-
-        console.log(`[GeminiProvider] Vision analysis successfully completed with model: ${modelName}`);
-        return parsed;
-      } catch (err) {
-        console.warn(`[GeminiProvider] Model ${modelName} failed: ${err.message}. Trying next candidate model if available...`);
-        lastError = err;
-        // Short backoff before next model
-        await new Promise(r => setTimeout(r, 600));
+      if (!response || !response.text) {
+        throw new Error(
+          'Empty response received from Gemini.'
+        );
       }
-    }
 
-    throw lastError || new Error('All Gemini Vision models failed to analyze the image');
+      let cleanText = response.text
+        .replace(/```json/gi, '')
+        .replace(/```/g, '')
+        .trim();
+
+      let result;
+
+      try {
+        result = JSON.parse(cleanText);
+      } catch (error) {
+        const jsonMatch =
+          cleanText.match(/\{[\s\S]*\}/);
+
+        if (jsonMatch) {
+          result = JSON.parse(jsonMatch[0]);
+        } else {
+          throw new Error(
+            'Failed to parse Gemini JSON response.'
+          );
+        }
+      }
+
+      // Make sure sources always exists
+      if (!Array.isArray(result.sources)) {
+        result.sources = [];
+      }
+
+      return result;
+
+    } catch (error) {
+      console.error(
+        '[GeminiProvider] Guidance generation failed:',
+        error.message
+      );
+
+      throw error;
+    }
   }
 }
 

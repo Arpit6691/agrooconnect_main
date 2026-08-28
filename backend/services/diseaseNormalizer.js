@@ -176,12 +176,19 @@ function normalizeDiagnosis(raw = {}, providerName = 'unknown') {
     status = 'Uncertain';
   }
 
-  let cropName = raw.cropName || 'General Crop / Plant';
+  // let cropName = raw.cropName || 'General Crop / Plant';
+  
+  let cropName = raw.cropName || raw.crop || 'General Crop / Plant';
   if (typeof cropName === 'string') {
     cropName = cropName.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
   }
 
-  let diseaseName = status === 'Healthy' ? null : normalizeDiseaseName(raw.diseaseName);
+  // let diseaseName = status === 'Healthy' ? null : normalizeDiseaseName(raw.diseaseName);
+
+
+  let diseaseName = status === 'Healthy'
+  ? null
+  : normalizeDiseaseName(raw.diseaseName || raw.disease);
   if (status === 'Uncertain' && !diseaseName) {
     diseaseName = 'Unknown / Needs Expert Review';
   }
