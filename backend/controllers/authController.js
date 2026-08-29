@@ -175,7 +175,27 @@ exports.googleLogin = async (req, res) => {
     let payload;
     const googleClientId = (process.env.GOOGLE_CLIENT_ID || '').trim().replace(/^["']|["']$/g, '');
 
-    if (googleClientId && googleClientId !== 'mock_client_id') {
+    // Detect whether the token is an OAuth2 access token (opaque, no dots) or a JWT ID token
+    const isAccessToken = !token.includes('.') || token === 'mock_google_dev_token';
+
+    if (isAccessToken && token !== 'mock_google_dev_token') {
+      // Access token flow: fetch user info directly from Google
+      try {
+        const fetch = (await import('node-fetch')).default;
+        const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (!userInfoRes.ok) {
+          return res.status(401).json({ success: false, error: 'Invalid Google access token' });
+        }
+        payload = await userInfoRes.json();
+        // userinfo endpoint uses 'sub' as the Google ID
+      } catch (fetchErr) {
+        console.error('[AUTH] Google userinfo fetch error:', fetchErr.message);
+        return res.status(401).json({ success: false, error: 'Failed to verify Google access token' });
+      }
+    } else if (googleClientId && googleClientId !== 'mock_client_id') {
+      // ID token flow: verify with google-auth-library
       try {
         const oauthClient = new OAuth2Client(googleClientId);
         const ticket = await oauthClient.verifyIdToken({
@@ -185,7 +205,7 @@ exports.googleLogin = async (req, res) => {
         payload = ticket.getPayload();
       } catch (verifyErr) {
         console.error('[AUTH] Google ID token verification error:', verifyErr.message);
-        // Fallback: If audience or clock skew caused verification issue, inspect decoded token safely
+        // Fallback: safely decode JWT and check issuer
         try {
           const decoded = jwt.decode(token);
           if (decoded && decoded.email && (decoded.iss === 'accounts.google.com' || decoded.iss === 'https://accounts.google.com')) {
@@ -199,18 +219,9 @@ exports.googleLogin = async (req, res) => {
         }
       }
     } else {
-      // In development/demo when GOOGLE_CLIENT_ID is not configured, decode or use mock payload
-      console.log('[AUTH - DEV] GOOGLE_CLIENT_ID not configured in backend .env. Parsing token for development.');
-      try {
-        const decoded = jwt.decode(token);
-        if (decoded && decoded.email) {
-          payload = decoded;
-        } else {
-          payload = { email: 'google.user@example.com', name: 'Google User', sub: `google_${Date.now()}` };
-        }
-      } catch (e) {
-        payload = { email: 'google.user@example.com', name: 'Google User', sub: `google_${Date.now()}` };
-      }
+      // Dev/demo fallback when GOOGLE_CLIENT_ID is not configured
+      console.log('[AUTH - DEV] GOOGLE_CLIENT_ID not configured. Using mock payload.');
+      payload = { email: 'google.user@example.com', name: 'Google User', sub: `google_${Date.now()}` };
     }
 
     const { email, name, sub: googleId, picture } = payload;
