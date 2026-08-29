@@ -1,5 +1,6 @@
- const { spawn } = require('child_process');
-const path = require('path');
+const fs = require('fs');
+const FormData = require('form-data');
+const fetch = require('node-fetch');
 const BaseProvider = require('./baseProvider');
 
 class PythonMLProvider extends BaseProvider {
@@ -8,116 +9,105 @@ class PythonMLProvider extends BaseProvider {
 
     this.name = 'pythonml';
 
-    // Path to Python ML project
-    this.pythonProjectPath =
-      process.env.PYTHON_ML_PATH ||
-      'C:\\Users\\HP\\AgrooConnect-ML';
-
-    // Python executable inside virtual environment
-    this.pythonExecutable =
-      process.env.PYTHON_EXECUTABLE ||
-      path.join(
-        this.pythonProjectPath,
-        'venv',
-        'Scripts',
-        'python.exe'
-      );
-
-    // Prediction script
-    this.predictScript = path.join(
-      this.pythonProjectPath,
-      'predict_image.py'
-    );
+    // Deployed Python ML API
+    this.mlApiUrl =
+      process.env.ML_API_URL ||
+      'https://agrooconnect-ml.onrender.com';
   }
 
+  /**
+   * Check whether ML API URL exists
+   */
   isConfigured() {
-    return true;
+    return Boolean(this.mlApiUrl);
   }
 
+  /**
+   * Send plant image to deployed Python ML API
+   */
   async analyzePlantImage(imageInfo) {
-    return new Promise((resolve, reject) => {
-      const imagePath = imageInfo.filePath;
+    if (!imageInfo || !imageInfo.filePath) {
+      throw new Error(
+        'Image file path is missing.'
+      );
+    }
 
-      console.log('[Python ML] Predicting image:', imagePath);
+    if (!fs.existsSync(imageInfo.filePath)) {
+      throw new Error(
+        `Image file not found: ${imageInfo.filePath}`
+      );
+    }
 
-      const python = spawn(
-        this.pythonExecutable,
-        [
-          this.predictScript,
-          imagePath
-        ],
+    try {
+      console.log(
+        '[Python ML] Sending image to ML API:',
+        this.mlApiUrl
+      );
+
+      // Create multipart form
+      const form = new FormData();
+
+      form.append(
+        'image',
+        fs.createReadStream(imageInfo.filePath),
         {
-          cwd: this.pythonProjectPath
+          filename:
+            imageInfo.filename || 'plant.jpg',
+          contentType:
+            imageInfo.mimetype || 'image/jpeg'
         }
       );
 
-      let output = '';
-      let errorOutput = '';
+      // Send image to Python ML API
+      const response = await fetch(
+        `${this.mlApiUrl}/predict`,
+        {
+          method: 'POST',
+          body: form,
+          headers: form.getHeaders()
+        }
+      );
 
-      python.stdout.on('data', (data) => {
-        output += data.toString();
-      });
+      const result = await response.json();
 
-      python.stderr.on('data', (data) => {
-        errorOutput += data.toString();
-      });
-
-      python.on('error', (error) => {
-        reject(
-          new Error(
-            `Failed to start Python process: ${error.message}`
-          )
+      // Handle API errors
+      if (!response.ok) {
+        throw new Error(
+          result.error ||
+          `ML API returned status ${response.status}`
         );
-      });
+      }
 
-      python.on('close', (code) => {
-        if (code !== 0) {
-          console.error('[Python ML Error]', errorOutput);
+      console.log(
+        '[Python ML] Prediction received:',
+        result
+      );
 
-          return reject(
-            new Error(
-              `Python prediction failed with code ${code}: ${errorOutput}`
-            )
-          );
+      /*
+        Python API returns:
+
+        {
+          crop: "Apple",
+          disease: "Apple Scab",
+          status: "Diseased",
+          confidence: 99.5
         }
 
-        try {
-          // Extract JSON because TensorFlow may print warnings
-          const jsonStart = output.indexOf('{');
-          const jsonEnd = output.lastIndexOf('}');
+        Return directly to diseaseNormalizer
+      */
 
-          if (jsonStart === -1 || jsonEnd === -1) {
-            throw new Error('No JSON found in Python output');
-          }
+      return result;
 
-          const jsonOutput = output.substring(
-            jsonStart,
-            jsonEnd + 1
-          );
+    } catch (error) {
+      console.error(
+        '[Python ML] API request failed:',
+        error.message
+      );
 
-          const result = JSON.parse(jsonOutput);
-
-          console.log(
-            '[Python ML] Prediction:',
-            result
-          );
-
-          resolve(result);
-
-        } catch (error) {
-          console.error(
-            '[Python ML] Raw output:',
-            output
-          );
-
-          reject(
-            new Error(
-              `Invalid response from Python model: ${error.message}`
-            )
-          );
-        }
-      });
-    });
+      throw new Error(
+        `ML prediction failed: ${error.message}`
+      );
+    }
   }
 }
 

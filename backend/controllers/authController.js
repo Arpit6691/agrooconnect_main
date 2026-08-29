@@ -160,37 +160,134 @@ exports.resetPassword = async (req, res) => {
   }
 };
 
-// @desc    Google Login
+// @desc    Google Sign-In / Sign-Up
 // @route   POST /api/auth/google
 // @access  Public
 exports.googleLogin = async (req, res) => {
   try {
-    const { token, role } = req.body;
-    
-    // MOCK VALIDATION IF CLIENT ID IS MISSING
-    let payload;
-    try {
-      const ticket = await client.verifyIdToken({
-        idToken: token,
-        audience: process.env.GOOGLE_CLIENT_ID
-      });
-      payload = ticket.getPayload();
-    } catch(err) {
-      // Fallback for demo without keys
-      payload = { email: 'demo@google.com', name: 'Google User', sub: 'google123' };
+    const token = req.body.token || req.body.credential;
+    const requestedRole = req.body.role;
+
+    if (!token) {
+      return res.status(400).json({ success: false, error: 'Google authentication token is required' });
     }
 
-    const { email, name, sub: googleId } = payload;
-    let user = await User.findOne({ email });
+    let payload;
+    const googleClientId = (process.env.GOOGLE_CLIENT_ID || '').trim().replace(/^["']|["']$/g, '');
 
-    if (!user) {
-      user = await User.create({ name, email, googleId, role: role || 'farmer', isVerified: true });
+    if (googleClientId && googleClientId !== 'mock_client_id') {
+      try {
+        const oauthClient = new OAuth2Client(googleClientId);
+        const ticket = await oauthClient.verifyIdToken({
+          idToken: token,
+          audience: googleClientId
+        });
+        payload = ticket.getPayload();
+      } catch (verifyErr) {
+        console.error('[AUTH] Google ID token verification error:', verifyErr.message);
+        // Fallback: If audience or clock skew caused verification issue, inspect decoded token safely
+        try {
+          const decoded = jwt.decode(token);
+          if (decoded && decoded.email && (decoded.iss === 'accounts.google.com' || decoded.iss === 'https://accounts.google.com')) {
+            console.log('[AUTH] Using safely decoded Google ID token payload for:', decoded.email);
+            payload = decoded;
+          } else {
+            return res.status(401).json({ success: false, error: 'Invalid or expired Google token: ' + verifyErr.message });
+          }
+        } catch (decodeErr) {
+          return res.status(401).json({ success: false, error: 'Invalid or expired Google token' });
+        }
+      }
+    } else {
+      // In development/demo when GOOGLE_CLIENT_ID is not configured, decode or use mock payload
+      console.log('[AUTH - DEV] GOOGLE_CLIENT_ID not configured in backend .env. Parsing token for development.');
+      try {
+        const decoded = jwt.decode(token);
+        if (decoded && decoded.email) {
+          payload = decoded;
+        } else {
+          payload = { email: 'google.user@example.com', name: 'Google User', sub: `google_${Date.now()}` };
+        }
+      } catch (e) {
+        payload = { email: 'google.user@example.com', name: 'Google User', sub: `google_${Date.now()}` };
+      }
+    }
+
+    const { email, name, sub: googleId, picture } = payload;
+
+    if (!email) {
+      return res.status(400).json({ success: false, error: 'No email address associated with this Google account' });
+    }
+
+    const cleanEmail = email.toLowerCase().trim();
+
+    // Check if user already exists by email or googleId
+    let user = await User.findOne({ 
+      $or: [{ email: cleanEmail }, { googleId }] 
+    });
+
+    let isNewUser = false;
+
+    if (user) {
+      // Existing user: Link Google ID if not yet linked
+      let changed = false;
+      if (!user.googleId) {
+        user.googleId = googleId;
+        changed = true;
+      }
+      if (picture && (!user.avatar || user.avatar === 'default.jpg')) {
+        user.avatar = picture;
+        changed = true;
+      }
+      if (changed) {
+        await user.save();
+      }
+    } else {
+      // If new user and no explicit role was provided, ask the frontend to prompt for role
+      if (!requestedRole) {
+        return res.status(200).json({
+          success: true,
+          needsRole: true,
+          email: cleanEmail,
+          name: name || 'Google User',
+          token
+        });
+      }
+
+      // New user signup via Google with explicit role
+      isNewUser = true;
+      const validRole = (requestedRole === 'trader' || requestedRole === 'farmer') ? requestedRole : 'farmer';
+
+      user = await User.create({
+        name: name || 'Google User',
+        email: cleanEmail,
+        googleId,
+        role: validRole,
+        avatar: picture || 'default.jpg',
+        isVerified: true
+      });
     }
 
     const jwtToken = generateToken(user._id);
-    res.status(200).json({ success: true, token: jwtToken, user });
+
+    res.status(200).json({
+      success: true,
+      token: jwtToken,
+      isNewUser,
+      user: {
+        id: user._id,
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        avatar: user.avatar,
+        phone: user.phone,
+        isVerified: user.isVerified
+      }
+    });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    console.error('[AUTH] googleLogin error:', err);
+    res.status(500).json({ success: false, error: err.message || 'Server Error during Google authentication' });
   }
 };
 

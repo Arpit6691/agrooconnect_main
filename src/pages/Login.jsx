@@ -2,6 +2,7 @@ import { useState, useContext } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import { Leaf, Mail, Lock, Eye, EyeOff } from 'lucide-react';
+import GoogleAuthButton from '../components/GoogleAuthButton';
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -99,6 +100,22 @@ const Login = () => {
             {loading ? 'Signing In...' : 'Sign In'}
           </button>
         </form>
+
+        <div className="relative my-6">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-slate-200" />
+          </div>
+          <div className="relative flex justify-center text-xs uppercase">
+            <span className="bg-white px-3 text-slate-400 font-semibold tracking-wider">
+              Or continue with
+            </span>
+          </div>
+        </div>
+
+        <GoogleAuthButton 
+          text="signin_with"
+          onError={(err) => setError(err)}
+        />
 
         <p className="text-center text-slate-500 text-sm mt-8">
           Don't have an account? <Link to="/register" className="text-[#16A34A] font-bold hover:underline">Sign up</Link>

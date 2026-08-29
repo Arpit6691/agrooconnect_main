@@ -54,6 +54,8 @@ const DealSchema = new mongoose.Schema({
   cancellationReason: { type: String },
   disputeReason: { type: String },
 
+  confirmationEmailSent: { type: Boolean, default: false },
+
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });

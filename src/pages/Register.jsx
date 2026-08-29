@@ -2,6 +2,7 @@ import { useState, useContext } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import { Leaf, Mail, Lock, User, Phone, MapPin } from 'lucide-react';
+import GoogleAuthButton from '../components/GoogleAuthButton';
 
 const Register = () => {
   const [formData, setFormData] = useState({
@@ -143,6 +144,23 @@ const Register = () => {
             {loading ? 'Creating Account...' : 'Create Account'}
           </button>
         </form>
+
+        <div className="relative my-6">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-slate-200" />
+          </div>
+          <div className="relative flex justify-center text-xs uppercase">
+            <span className="bg-white px-3 text-slate-400 font-semibold tracking-wider">
+              Or continue with
+            </span>
+          </div>
+        </div>
+
+        <GoogleAuthButton 
+          role={formData.role}
+          text="signup_with"
+          onError={(err) => setError(err)}
+        />
 
         <p className="text-center text-slate-500 text-sm mt-8">
           Already have an account? <Link to="/login" className="text-primary-600 font-semibold hover:underline">Sign in</Link>

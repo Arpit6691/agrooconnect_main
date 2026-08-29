@@ -1,6 +1,9 @@
 const Offer = require('../models/Offer');
 const Deal = require('../models/Deal');
+const Crop = require('../models/Crop');
+const User = require('../models/User');
 const Notification = require('../models/Notification');
+const { sendDealConfirmationEmails } = require('../services/emailService');
 
 // @desc    Get all offers (for a farmer or trader)
 // @route   GET /api/offers
@@ -103,14 +106,15 @@ exports.updateOfferStatus = async (req, res) => {
       link: isFarmer ? '/trader-dashboard' : '/farmer-dashboard'
     });
 
-    // If accepted, create a Deal
+    // If accepted, create a Deal and send confirmation emails
     if (status === 'Accepted') {
-      await Deal.create({
+      const deal = await Deal.create({
         cropId: offer.cropId,
         farmerId: offer.farmerId,
         traderId: offer.traderId,
         finalPrice: offer.offeredPrice,
-        quantity: offer.quantity
+        quantity: offer.quantity,
+        totalAmount: offer.offeredPrice * offer.quantity
       });
       
       // Notify both parties about deal creation
@@ -127,6 +131,32 @@ exports.updateOfferStatus = async (req, res) => {
         type: 'deal',
         link: '/trader-dashboard'
       }]);
+
+      // Fetch related info and dispatch confirmation emails asynchronously (non-blocking)
+      (async () => {
+        try {
+          const [crop, farmer, trader] = await Promise.all([
+            Crop.findById(offer.cropId),
+            User.findById(offer.farmerId),
+            User.findById(offer.traderId)
+          ]);
+
+          if (crop && farmer && trader && !deal.confirmationEmailSent) {
+            const emailResult = await sendDealConfirmationEmails({
+              deal,
+              crop,
+              farmer,
+              trader
+            });
+
+            if (emailResult.farmerSent || emailResult.traderSent) {
+              await Deal.findByIdAndUpdate(deal._id, { confirmationEmailSent: true });
+            }
+          }
+        } catch (emailErr) {
+          console.error('[EMAIL SERVICE] Async confirmation email error:', emailErr.message);
+        }
+      })();
     }
 
     res.status(200).json({ success: true, data: offer });

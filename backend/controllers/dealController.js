@@ -1,7 +1,10 @@
 const Deal = require('../models/Deal');
+const Crop = require('../models/Crop');
+const User = require('../models/User');
 const Complaint = require('../models/Complaint');
 const Review = require('../models/Review');
 const Notification = require('../models/Notification');
+const { sendDealConfirmationEmails } = require('../services/emailService');
 const Razorpay = require('razorpay');
 const crypto = require('crypto');
 
@@ -44,6 +47,7 @@ exports.createDeal = async (req, res) => {
       traderId: req.user.id,
       finalPrice,
       quantity,
+      totalAmount: finalPrice * (quantity || 1),
       paymentMethod: paymentMethod || 'Not Set'
     });
 
@@ -55,6 +59,32 @@ exports.createDeal = async (req, res) => {
       type: 'deal',
       link: `/deals/${deal._id}`
     });
+
+    // Dispatch confirmation emails asynchronously (non-blocking)
+    (async () => {
+      try {
+        const [crop, farmer, trader] = await Promise.all([
+          Crop.findById(cropId),
+          User.findById(farmerId),
+          User.findById(req.user.id)
+        ]);
+
+        if (crop && farmer && trader && !deal.confirmationEmailSent) {
+          const emailResult = await sendDealConfirmationEmails({
+            deal,
+            crop,
+            farmer,
+            trader
+          });
+
+          if (emailResult.farmerSent || emailResult.traderSent) {
+            await Deal.findByIdAndUpdate(deal._id, { confirmationEmailSent: true });
+          }
+        }
+      } catch (emailErr) {
+        console.error('[EMAIL SERVICE] Async confirmation email error on createDeal:', emailErr.message);
+      }
+    })();
 
     res.status(201).json({ success: true, data: deal });
   } catch (err) {
