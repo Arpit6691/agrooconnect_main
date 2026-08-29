@@ -230,17 +230,11 @@ exports.googleLogin = async (req, res) => {
 
     if (user) {
       // Existing user: Link Google ID if not yet linked
-      let changed = false;
-      if (!user.googleId) {
-        user.googleId = googleId;
-        changed = true;
-      }
-      if (picture && (!user.avatar || user.avatar === 'default.jpg')) {
-        user.avatar = picture;
-        changed = true;
-      }
-      if (changed) {
-        await user.save();
+      const update = {};
+      if (!user.googleId) update.googleId = googleId;
+      if (picture && (!user.avatar || user.avatar === 'default.jpg')) update.avatar = picture;
+      if (Object.keys(update).length > 0) {
+        user = await User.findByIdAndUpdate(user._id, { $set: update }, { new: true });
       }
     } else {
       // If new user and no explicit role was provided, ask the frontend to prompt for role
@@ -262,6 +256,7 @@ exports.googleLogin = async (req, res) => {
         name: name || 'Google User',
         email: cleanEmail,
         googleId,
+        password: crypto.randomBytes(16).toString('hex'),
         role: validRole,
         avatar: picture || 'default.jpg',
         isVerified: true

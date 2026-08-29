@@ -8,7 +8,6 @@ const UserSchema = new mongoose.Schema({
   role: { type: String, enum: ['farmer', 'trader', 'admin'], default: 'farmer' },
   password: { 
     type: String, 
-    required: function() { return !this.googleId; }, 
     minlength: 6, 
     select: false 
   },
