@@ -11,14 +11,23 @@ const getTransporter = () => {
   const user = process.env.SMTP_USER || process.env.SMTP_EMAIL;
   const pass = process.env.SMTP_PASS || process.env.SMTP_PASSWORD;
 
+  // Diagnostic — visible in Render logs
+  console.log('[EMAIL SERVICE] SMTP config check:', {
+    SMTP_HOST: host || '(NOT SET)',
+    SMTP_PORT: port,
+    SMTP_USER: user ? user.substring(0, 5) + '***' : '(NOT SET)',
+    SMTP_PASS: pass ? '***set***' : '(NOT SET)'
+  });
+
   if (!host || !user || !pass || user === 'test_user' || pass === 'test_password') {
+    console.warn('[EMAIL SERVICE] SMTP credentials incomplete or placeholder — emails will NOT be sent. Set SMTP_HOST, SMTP_USER, SMTP_PASS on your server.');
     return null;
   }
 
   return nodemailer.createTransport({
     host,
     port,
-    secure: port === 465, // true for 465, false for other ports (587, 2525)
+    secure: port === 465, // true for 465, false for 587/2525
     auth: {
       user,
       pass
