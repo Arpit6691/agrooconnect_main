@@ -16,6 +16,7 @@ import DealDetails from './pages/DealDetails';
 import PlantDiseaseDetection from './pages/PlantDiseaseDetection';
 import PlantDetectionHistory from './pages/PlantDetectionHistory';
 import PlantDetectionDetail from './pages/PlantDetectionDetail';
+import GoogleCallback from './pages/GoogleCallback';
 
 function App() {
   return (
@@ -42,6 +43,8 @@ function App() {
             <Route path="/disease-detection" element={<PlantDiseaseDetection />} />
             <Route path="/plant-detection-history" element={<PlantDetectionHistory />} />
             <Route path="/plant-detection/:id" element={<PlantDetectionDetail />} />
+            {/* Google OAuth callback */}
+            <Route path="/auth/google/callback" element={<GoogleCallback />} />
             {/* Catch-all fallback */}
             <Route path="*" element={<LandingPage />} />
           </Routes>
