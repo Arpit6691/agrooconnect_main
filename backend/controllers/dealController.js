@@ -69,6 +69,17 @@ exports.createDeal = async (req, res) => {
           User.findById(req.user.id)
         ]);
 
+        // Diagnostic — visible in Render logs
+        console.log('[EMAIL SERVICE] Pre-send check (direct buy):', {
+          dealId: deal._id,
+          cropFound: !!crop,
+          farmerFound: !!farmer,
+          farmerEmail: farmer?.email || '(NO EMAIL)',
+          traderFound: !!trader,
+          traderEmail: trader?.email || '(NO EMAIL)',
+          alreadySent: deal.confirmationEmailSent
+        });
+
         if (crop && farmer && trader && !deal.confirmationEmailSent) {
           const emailResult = await sendDealConfirmationEmails({
             deal,
@@ -80,6 +91,10 @@ exports.createDeal = async (req, res) => {
           if (emailResult.farmerSent || emailResult.traderSent) {
             await Deal.findByIdAndUpdate(deal._id, { confirmationEmailSent: true });
           }
+        } else {
+          console.warn('[EMAIL SERVICE] Skipped — missing data:', {
+            crop: !!crop, farmer: !!farmer, trader: !!trader, alreadySent: deal.confirmationEmailSent
+          });
         }
       } catch (emailErr) {
         console.error('[EMAIL SERVICE] Async confirmation email error on createDeal:', emailErr.message);

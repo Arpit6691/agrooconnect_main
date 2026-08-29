@@ -367,6 +367,13 @@ const sendDealConfirmationEmails = async ({ deal, crop, farmer, trader }) => {
 
     const fromAddress = getFromAddress();
 
+    if (!farmer?.email) {
+      console.warn(`[EMAIL SERVICE] Farmer email is missing — skipping farmer email. Farmer ID: ${farmer?._id}`);
+    }
+    if (!trader?.email) {
+      console.warn(`[EMAIL SERVICE] Trader email is missing — skipping trader email. Trader ID: ${trader?._id}`);
+    }
+
     const sendFarmerPromise = farmer?.email ? transporter.sendMail({
       from: fromAddress,
       to: farmer.email,
