@@ -28,6 +28,7 @@ const getTransporter = () => {
     host,
     port,
     secure: port === 465, // true for 465, false for 587/2525
+    family: 4,            // Force IPv4 — Render free tier blocks outbound IPv6 (ENETUNREACH)
     auth: {
       user,
       pass
