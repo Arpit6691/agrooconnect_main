@@ -173,23 +173,24 @@ exports.googleLogin = async (req, res) => {
     }
 
     let payload;
-    const googleClientId = (process.env.GOOGLE_CLIENT_ID || '').trim().replace(/^["']|["']$/g, '');
+    const googleClientId = (process.env.GOOGLE_CLIENT_ID || '').trim().replace(/^[\"']|[\"']$/g, '');
 
-    // Detect whether the token is an OAuth2 access token (opaque, no dots) or a JWT ID token
-    const isAccessToken = !token.includes('.') || token === 'mock_google_dev_token';
+    // Frontend explicitly tells us which token type it sent
+    const isAccessToken = req.body.isAccessToken === true || (!token.includes('.') && token !== 'mock_google_dev_token');
 
     if (isAccessToken && token !== 'mock_google_dev_token') {
-      // Access token flow: fetch user info directly from Google
+      // Access token flow: fetch user info directly from Google's userinfo endpoint
       try {
-        const fetch = (await import('node-fetch')).default;
         const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
           headers: { Authorization: `Bearer ${token}` }
         });
         if (!userInfoRes.ok) {
+          const errText = await userInfoRes.text();
+          console.error('[AUTH] Google userinfo error:', errText);
           return res.status(401).json({ success: false, error: 'Invalid Google access token' });
         }
         payload = await userInfoRes.json();
-        // userinfo endpoint uses 'sub' as the Google ID
+        console.log('[AUTH] Google userinfo payload received for:', payload.email);
       } catch (fetchErr) {
         console.error('[AUTH] Google userinfo fetch error:', fetchErr.message);
         return res.status(401).json({ success: false, error: 'Failed to verify Google access token' });
@@ -219,8 +220,8 @@ exports.googleLogin = async (req, res) => {
         }
       }
     } else {
-      // Dev/demo fallback when GOOGLE_CLIENT_ID is not configured
-      console.log('[AUTH - DEV] GOOGLE_CLIENT_ID not configured. Using mock payload.');
+      // Dev/demo fallback — only reached when GOOGLE_CLIENT_ID is not set on the server
+      console.warn('[AUTH - DEV] GOOGLE_CLIENT_ID not configured on this server. Using mock payload. Set GOOGLE_CLIENT_ID in environment variables!');
       payload = { email: 'google.user@example.com', name: 'Google User', sub: `google_${Date.now()}` };
     }
 

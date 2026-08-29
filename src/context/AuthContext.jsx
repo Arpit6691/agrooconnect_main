@@ -43,10 +43,16 @@ export const AuthProvider = ({ children }) => {
     return res.data;
   };
 
-  const googleLogin = async (token, role) => {
-    const res = await api.post('/auth/google', { token, role });
-    localStorage.setItem('token', res.data.token);
-    setUser(res.data.user);
+  const googleLogin = async (token, role, isAccessToken = false) => {
+    const res = await api.post('/auth/google', { token, role, isAccessToken });
+    // needsRole response: backend returns no JWT yet, just asks for role selection
+    if (res.data?.needsRole) {
+      return res.data;
+    }
+    if (res.data.token) {
+      localStorage.setItem('token', res.data.token);
+      setUser(res.data.user);
+    }
     return res.data;
   };
 
